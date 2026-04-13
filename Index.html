@@ -292,9 +292,87 @@ select.form-select option { background: #1a1a1e; }
 .concepto-lines td.num { text-align: right; font-family: var(--mono); white-space: nowrap; }
 .concepto-lines tr:last-child td { border-bottom: none; }
 .concepto-lines .concepto-desc { font-size: 13px; color: var(--text); line-height: 1.4; }
+
+/* ──────────── LOGIN ──────────── */
+#loginScreen {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 32px 24px;
+}
+#loginScreen.hidden { display: none; }
+.login-logo {
+  font-size: 48px; margin-bottom: 12px;
+}
+.login-title {
+  font-family: var(--mono); font-size: 20px; font-weight: 500;
+  color: var(--accent); letter-spacing: .04em; margin-bottom: 4px;
+}
+.login-sub {
+  font-size: 13px; color: var(--muted); margin-bottom: 40px;
+}
+.login-box {
+  width: 100%; max-width: 320px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 28px 24px;
+}
+.login-field { margin-bottom: 16px; }
+.login-label {
+  display: block; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted); margin-bottom: 8px;
+}
+.login-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; color: var(--text);
+  font-family: var(--sans); font-size: 16px; outline: none;
+  transition: border-color .15s; -webkit-appearance: none;
+  letter-spacing: .1em;
+}
+.login-input:focus { border-color: var(--accent); }
+.login-btn {
+  width: 100%; padding: 15px; border-radius: 12px;
+  background: var(--accent); color: #000; font-size: 15px;
+  font-weight: 700; border: none; cursor: pointer;
+  font-family: var(--sans); margin-top: 4px;
+  transition: opacity .15s;
+}
+.login-btn:active { opacity: .85; }
+.login-error {
+  color: var(--danger); font-size: 12px; text-align: center;
+  margin-top: 12px; min-height: 18px;
+  animation: shake .3s ease;
+}
+@keyframes shake {
+  0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)}
+}
+.login-footer {
+  font-size: 10px; color: var(--muted); text-align: center;
+  margin-top: 24px; line-height: 1.6;
+}
 </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-logo">⚡</div>
+  <div class="login-title">FJA Facturas</div>
+  <div class="login-sub">Francisco Javier Álvarez Martins</div>
+  <div class="login-box">
+    <div class="login-field">
+      <label class="login-label" for="loginPass">Contraseña</label>
+      <input class="login-input" type="password" id="loginPass"
+             placeholder="••••••••••••"
+             onkeydown="if(event.key==='Enter') doLogin()"
+             autocomplete="current-password">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Entrar</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+  <div class="login-footer">Acceso privado · Solo uso personal</div>
+</div>
 
 <!-- TOP BAR -->
 <div class="topbar">
@@ -1987,8 +2065,45 @@ function _doExportExcel() {
   XLSX.writeFile(wb, filename, { bookType:'xlsx', type:'binary', cellStyles:true });
 }
 
+// ══════════════════════════════════════════════
+// LOGIN
+// ══════════════════════════════════════════════
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
 
-renderDashboard();
+// Pre-computed SHA-256 of "peponas.1975"
+const PWD_HASH = (async () => sha256('peponas.1975'))();
+
+async function doLogin() {
+  const val = document.getElementById('loginPass').value;
+  const entered = await sha256(val);
+  const correct = await PWD_HASH;
+  if (entered === correct) {
+    sessionStorage.setItem('fja_auth', '1');
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('loginError').textContent = '';
+  } else {
+    const el = document.getElementById('loginError');
+    el.textContent = 'Contraseña incorrecta';
+    el.style.animation = 'none';
+    requestAnimationFrame(() => { el.style.animation = 'shake .3s ease'; });
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginPass').focus();
+  }
+}
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+if (sessionStorage.getItem('fja_auth') === '1') {
+  document.getElementById('loginScreen').classList.add('hidden');
+  renderDashboard();
+} else {
+  document.getElementById('loginScreen').classList.remove('hidden');
+  setTimeout(() => document.getElementById('loginPass').focus(), 200);
+}
 </script>
 </body>
 </html>
