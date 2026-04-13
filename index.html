@@ -1,0 +1,2109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Facturas · FJA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #0f0f11;
+  --surface: #1a1a1e;
+  --surface2: #242428;
+  --border: #2e2e34;
+  --accent: #00d4a1;
+  --accent2: #7c6af7;
+  --danger: #ff5a5a;
+  --warn: #f0a040;
+  --text: #f0f0f2;
+  --muted: #6b6b78;
+  --mono: 'DM Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html { height: 100%; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  padding-bottom: calc(64px + var(--safe-bot));
+}
+
+/* ──────────── TOP BAR ──────────── */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(15,15,17,0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  padding: calc(var(--safe-top) + 12px) 16px 12px;
+  display: flex; align-items: center; gap: 12px;
+}
+.topbar h1 { font-family: var(--mono); font-size: 15px; font-weight: 500; letter-spacing: .04em; color: var(--accent); flex:1; }
+.topbar-badge { font-family: var(--mono); font-size: 11px; background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px; color: var(--muted); }
+
+/* ──────────── NAV ──────────── */
+.nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(15,15,17,0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  padding-bottom: var(--safe-bot);
+}
+.nav-btn {
+  flex: 1; padding: 10px 4px 8px;
+  background: none; border: none; color: var(--muted);
+  font-family: var(--sans); font-size: 10px; font-weight: 500;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  cursor: pointer; transition: color .15s;
+}
+.nav-btn.active { color: var(--accent); }
+.nav-icon { font-size: 18px; line-height: 1; }
+
+/* ──────────── SCREENS ──────────── */
+.screen { display: none; padding: 16px; }
+.screen.active { display: block; }
+
+/* ──────────── DASHBOARD STATS ──────────── */
+.year-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; margin-bottom: 16px; }
+.year-tabs::-webkit-scrollbar { display: none; }
+.year-tab {
+  padding: 6px 16px; border-radius: 20px; font-family: var(--mono); font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  cursor: pointer; white-space: nowrap; transition: all .15s;
+}
+.year-tab.active { background: var(--accent); border-color: var(--accent); color: #000; }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px; position: relative; overflow: hidden;
+}
+.stat-card::before { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, transparent 60%, rgba(0,212,161,.04)); pointer-events: none; }
+.stat-label { font-size: 10px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
+.stat-value { font-family: var(--mono); font-size: 18px; font-weight: 500; color: var(--text); }
+.stat-value.green { color: var(--accent); }
+.stat-value.purple { color: var(--accent2); }
+.stat-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+.section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 10px; }
+
+/* ──────────── CHARTS ──────────── */
+.chart-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 16px; overflow: hidden; }
+.chart-title { font-size: 11px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 4px; display:flex; justify-content:space-between; align-items:center; }
+.chart-canvas-wrap { position: relative; width: 100%; touch-action: pan-y; }
+canvas.chart-canvas { display: block; width: 100%; cursor: crosshair; }
+
+/* Tooltip */
+.chart-tooltip {
+  position: fixed; z-index: 500; pointer-events: none;
+  background: var(--surface2); border: 1px solid var(--accent);
+  border-radius: 8px; padding: 8px 12px;
+  font-family: var(--mono); font-size: 12px; color: var(--text);
+  box-shadow: 0 4px 20px rgba(0,0,0,.5);
+  transition: opacity .1s; opacity: 0; white-space: nowrap;
+}
+.chart-tooltip.visible { opacity: 1; }
+.chart-tooltip-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; text-transform: capitalize; }
+.chart-tooltip-val { color: var(--accent); font-weight: 500; font-size: 14px; }
+
+/* Chart selector tabs */
+.chart-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.chart-tab { padding: 4px 10px; border-radius: 14px; font-size: 11px; font-weight: 500; border: 1px solid var(--border); background: none; color: var(--muted); cursor: pointer; font-family: var(--sans); transition: all .15s; }
+.chart-tab.active { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+
+/* Trimestral table */
+.trim-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.trim-table th { font-size: 10px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: .06em; padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--border); }
+.trim-table th:first-child { text-align: left; }
+.trim-table td { padding: 7px 8px; text-align: right; font-family: var(--mono); font-size: 12px; border-bottom: 1px solid rgba(46,46,52,.5); }
+.trim-table td:first-child { text-align: left; color: var(--accent); font-weight: 500; }
+.trim-table tr:last-child td { border-bottom: none; color: var(--text); font-weight: 600; }
+
+/* ──────────── FACTURAS LIST ──────────── */
+.search-bar {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 14px; display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+}
+.search-bar input {
+  flex: 1; background: none; border: none; outline: none;
+  font-family: var(--sans); font-size: 14px; color: var(--text);
+}
+.search-bar input::placeholder { color: var(--muted); }
+
+.filter-row { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 14px; scrollbar-width: none; padding-bottom: 4px; }
+.filter-row::-webkit-scrollbar { display: none; }
+.filter-chip {
+  padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  cursor: pointer; white-space: nowrap; transition: all .15s;
+}
+.filter-chip.active { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+
+.fact-list { display: flex; flex-direction: column; gap: 8px; }
+.fact-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px; cursor: pointer; transition: border-color .15s;
+  position: relative;
+}
+.fact-card:active { border-color: var(--accent); }
+.fact-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.fact-num { font-family: var(--mono); font-size: 12px; color: var(--accent2); font-weight: 500; }
+.fact-date { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.fact-cliente { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+.fact-concepto { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fact-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.fact-base { font-family: var(--mono); font-size: 13px; }
+.fact-neto { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); }
+.fact-estado { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; padding: 3px 8px; border-radius: 20px; background: rgba(0,212,161,.12); color: var(--accent); }
+.fact-trim { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+
+/* ──────────── DETAIL MODAL ──────────── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200;
+  backdrop-filter: blur(4px); display: none; align-items: flex-end;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface); width: 100%; border-radius: 20px 20px 0 0;
+  max-height: 88vh; overflow-y: auto;
+  padding: 20px 20px calc(20px + var(--safe-bot));
+  animation: slideUp .25s ease;
+}
+@keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 20px; }
+.modal-title { font-family: var(--mono); font-size: 16px; color: var(--accent2); font-weight: 500; margin-bottom: 4px; }
+.modal-subtitle { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+.detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.detail-row:last-child { border-bottom: none; }
+.detail-key { color: var(--muted); }
+.detail-val { font-family: var(--mono); font-weight: 500; text-align: right; max-width: 60%; word-break: break-word; }
+.concepto-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 12px; color: var(--text); line-height: 1.6; margin: 10px 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); }
+.totals-block { background: var(--bg); border: 1px solid var(--accent); border-radius: 10px; padding: 14px; margin-top: 14px; }
+.total-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+.total-row.main { font-size: 16px; font-weight: 600; color: var(--accent); padding-top: 10px; margin-top: 6px; border-top: 1px solid var(--border); }
+.total-row .val { font-family: var(--mono); }
+
+.btn-row { display: flex; gap: 10px; margin-top: 20px; }
+.btn { flex: 1; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; font-family: var(--sans); transition: opacity .15s; }
+.btn:active { opacity: .8; }
+.btn-danger { background: rgba(255,90,90,.15); color: var(--danger); border: 1px solid rgba(255,90,90,.3); }
+.btn-primary { background: var(--accent); color: #000; }
+.btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+
+/* ──────────── NUEVA FACTURA ──────────── */
+.form-section { margin-bottom: 20px; }
+.form-section-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); margin-bottom: 10px; }
+.form-field { margin-bottom: 12px; }
+.form-label { font-size: 11px; color: var(--muted); font-weight: 500; margin-bottom: 5px; display: block; text-transform: uppercase; letter-spacing: .06em; }
+.form-input, .form-select, .form-textarea {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px; color: var(--text);
+  font-family: var(--sans); font-size: 14px; outline: none;
+  transition: border-color .15s; -webkit-appearance: none;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
+.form-textarea { resize: none; min-height: 100px; line-height: 1.5; }
+select.form-select option { background: #1a1a1e; }
+
+.conceptos-list { display: flex; flex-direction: column; gap: 8px; }
+.concepto-row { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; position: relative; }
+.concepto-row .row-grid { display: grid; grid-template-columns: 1fr 80px 80px; gap: 8px; align-items: end; }
+.concepto-del { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--danger); font-size: 16px; cursor: pointer; padding: 4px; }
+
+.totals-preview { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 10px; }
+
+.add-row-btn {
+  width: 100%; padding: 12px; border: 1px dashed var(--border); border-radius: 10px;
+  background: none; color: var(--accent); font-size: 13px; cursor: pointer;
+  font-family: var(--sans); transition: border-color .15s;
+}
+.add-row-btn:hover { border-color: var(--accent); }
+
+/* ──────────── CLIENTES ──────────── */
+.cliente-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 8px; cursor: pointer; }
+.cliente-card:active { border-color: var(--accent2); }
+.cliente-name { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.cliente-nif { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.cliente-meta { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+/* ──────────── EDIT FORM ──────────── */
+.edit-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 300;
+  display: none; flex-direction: column;
+}
+.edit-overlay.open { display: flex; }
+.edit-panel {
+  flex: 1; background: var(--bg); overflow-y: auto;
+  padding: calc(var(--safe-top) + 60px) 16px calc(16px + var(--safe-bot));
+}
+.edit-topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 301;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  padding: calc(var(--safe-top) + 12px) 16px 12px;
+  display: flex; align-items: center; gap: 12px;
+}
+.edit-topbar h2 { flex: 1; font-size: 16px; font-weight: 600; }
+.icon-btn { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; padding: 4px; line-height: 1; }
+.icon-btn.save { color: var(--accent); font-size: 14px; font-weight: 600; font-family: var(--sans); }
+
+/* ──────────── MISC ──────────── */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty-icon { font-size: 40px; margin-bottom: 12px; }
+.empty-text { font-size: 14px; }
+
+.informe-section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+.informe-year { font-family: var(--mono); font-size: 13px; color: var(--accent2); font-weight: 500; margin-bottom: 12px; }
+.trim-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(46,46,52,.6); font-size: 13px; }
+.trim-row:last-child { border-bottom: none; }
+.trim-row-label { font-family: var(--mono); color: var(--accent); font-weight: 500; }
+.trim-data { text-align: right; }
+.trim-data .base { font-family: var(--mono); font-size: 13px; }
+.trim-data .neto { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+.pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+.pill-cobrada { background: rgba(0,212,161,.15); color: var(--accent); }
+.pill-pendiente { background: rgba(240,160,64,.15); color: var(--warn); }
+
+/* ──────────── PDF / PRINT ──────────── */
+@media print {
+  body { background: #fff !important; color: #000 !important; padding: 0 !important; }
+  .topbar, .nav, .modal-overlay, .edit-overlay, .screen:not(#screen-print) { display: none !important; }
+  #pdfFrame { display: block !important; }
+}
+#pdfFrame { display: none; }
+
+/* concepto lines table */
+.concepto-lines { width: 100%; border-collapse: collapse; font-size: 12px; margin: 8px 0; }
+.concepto-lines th { font-size: 10px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: .06em; padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+.concepto-lines th.num { text-align: right; }
+.concepto-lines td { padding: 7px 8px; border-bottom: 1px solid rgba(46,46,52,.4); font-size: 12px; vertical-align: top; }
+.concepto-lines td.num { text-align: right; font-family: var(--mono); white-space: nowrap; }
+.concepto-lines tr:last-child td { border-bottom: none; }
+.concepto-lines .concepto-desc { font-size: 13px; color: var(--text); line-height: 1.4; }
+
+/* ──────────── LOGIN ──────────── */
+#loginScreen {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 32px 24px;
+}
+#loginScreen.hidden { display: none; }
+.login-logo {
+  font-size: 48px; margin-bottom: 12px;
+}
+.login-title {
+  font-family: var(--mono); font-size: 20px; font-weight: 500;
+  color: var(--accent); letter-spacing: .04em; margin-bottom: 4px;
+}
+.login-sub {
+  font-size: 13px; color: var(--muted); margin-bottom: 40px;
+}
+.login-box {
+  width: 100%; max-width: 320px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 28px 24px;
+}
+.login-field { margin-bottom: 16px; }
+.login-label {
+  display: block; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted); margin-bottom: 8px;
+}
+.login-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; color: var(--text);
+  font-family: var(--sans); font-size: 16px; outline: none;
+  transition: border-color .15s; -webkit-appearance: none;
+  letter-spacing: .1em;
+}
+.login-input:focus { border-color: var(--accent); }
+.login-btn {
+  width: 100%; padding: 15px; border-radius: 12px;
+  background: var(--accent); color: #000; font-size: 15px;
+  font-weight: 700; border: none; cursor: pointer;
+  font-family: var(--sans); margin-top: 4px;
+  transition: opacity .15s;
+}
+.login-btn:active { opacity: .85; }
+.login-error {
+  color: var(--danger); font-size: 12px; text-align: center;
+  margin-top: 12px; min-height: 18px;
+  animation: shake .3s ease;
+}
+@keyframes shake {
+  0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)}
+}
+.login-footer {
+  font-size: 10px; color: var(--muted); text-align: center;
+  margin-top: 24px; line-height: 1.6;
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-logo">⚡</div>
+  <div class="login-title">FJA Facturas</div>
+  <div class="login-sub">Francisco Javier Álvarez Martins</div>
+  <div class="login-box">
+    <div class="login-field">
+      <label class="login-label" for="loginPass">Contraseña</label>
+      <input class="login-input" type="password" id="loginPass"
+             placeholder="••••••••••••"
+             onkeydown="if(event.key==='Enter') doLogin()"
+             autocomplete="current-password">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Entrar</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+  <div class="login-footer">Acceso privado · Solo uso personal</div>
+</div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <h1>⚡ FJA Facturas</h1>
+  <span class="topbar-badge" id="topBadge">2026</span>
+</div>
+
+<!-- SCREENS -->
+<div id="screen-dashboard" class="screen active">
+  <div class="year-tabs" id="yearTabs"></div>
+  <div class="stats-grid" id="statsGrid"></div>
+  <div class="chart-wrap" id="chartWrap">
+    <div class="chart-title">
+      <span id="chartTitleLabel">Facturación mensual</span>
+      <span style="font-size:10px;color:var(--accent);font-family:var(--mono)" id="chartTotal"></span>
+    </div>
+    <div class="chart-tabs">
+      <button class="chart-tab active" onclick="setChartMode('mensual',this)">Mensual</button>
+      <button class="chart-tab" onclick="setChartMode('trimestral',this)">Trimestral</button>
+      <button class="chart-tab" onclick="setChartMode('anual',this)">Histórico</button>
+    </div>
+    <div class="chart-canvas-wrap">
+      <canvas class="chart-canvas" id="mainChart" height="160"></canvas>
+    </div>
+  </div>
+  <div class="section-title">Resumen trimestral</div>
+  <div class="informe-section" id="trimTableWrap"></div>
+</div>
+
+<div id="screen-facturas" class="screen">
+  <div class="search-bar">
+    <span style="color:var(--muted)">🔍</span>
+    <input type="text" id="searchInput" placeholder="Buscar factura, cliente…">
+  </div>
+  <div class="filter-row" id="filterRow"></div>
+  <div class="fact-list" id="factList"></div>
+</div>
+
+<div id="screen-nueva" class="screen">
+  <div id="nuevaFormWrap"></div>
+</div>
+
+<div id="screen-clientes" class="screen">
+  <div class="search-bar">
+    <span style="color:var(--muted)">🔍</span>
+    <input type="text" id="clienteSearch" placeholder="Buscar cliente…">
+  </div>
+  <div id="clienteList"></div>
+</div>
+
+<div id="screen-informes" class="screen">
+  <button onclick="exportExcel()" style="width:100%;margin-bottom:16px;padding:14px;border-radius:12px;background:linear-gradient(135deg,#1FAB57,#16a34a);color:#fff;font-size:15px;font-weight:700;border:none;cursor:pointer;font-family:var(--sans);display:flex;align-items:center;justify-content:center;gap:10px;">
+    <span style="font-size:20px">📊</span> Exportar BBDD a Excel
+  </button>
+  <div id="informeContent"></div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="nav">
+  <button class="nav-btn active" onclick="showScreen('dashboard',this)">
+    <span class="nav-icon">📊</span>Dashboard
+  </button>
+  <button class="nav-btn" onclick="showScreen('facturas',this)">
+    <span class="nav-icon">📄</span>Facturas
+  </button>
+  <button class="nav-btn" onclick="showScreen('nueva',this)">
+    <span class="nav-icon">➕</span>Nueva
+  </button>
+  <button class="nav-btn" onclick="showScreen('clientes',this)">
+    <span class="nav-icon">🏢</span>Clientes
+  </button>
+  <button class="nav-btn" onclick="showScreen('informes',this)">
+    <span class="nav-icon">📈</span>Informes
+  </button>
+</nav>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="detailModal" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()" id="detailContent">
+    <div class="modal-handle"></div>
+  </div>
+</div>
+
+<!-- CLIENTE MODAL -->
+<div class="modal-overlay" id="clienteModal" onclick="closeClienteModal()">
+  <div class="modal" onclick="event.stopPropagation()" id="clienteModalContent">
+    <div class="modal-handle"></div>
+  </div>
+</div>
+
+<!-- EMAIL MODAL -->
+<div class="modal-overlay" id="emailModal" onclick="closeEmailModal()">
+  <div class="modal" onclick="event.stopPropagation()" id="emailModalContent" style="max-height:92vh;">
+    <div class="modal-handle"></div>
+  </div>
+</div>
+
+<!-- EDIT OVERLAY -->
+<div class="edit-overlay" id="editOverlay">
+  <div class="edit-topbar">
+    <button class="icon-btn" onclick="closeEdit()">✕</button>
+    <h2 id="editTitle">Editar</h2>
+    <button class="icon-btn save" onclick="saveEdit()">Guardar</button>
+  </div>
+  <div class="edit-panel" id="editPanel"></div>
+</div>
+
+<!-- TOOLTIP -->
+<div class="chart-tooltip" id="chartTooltip">
+  <div class="chart-tooltip-label" id="tooltipLabel"></div>
+  <div class="chart-tooltip-val" id="tooltipVal"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════
+const EMISOR = {
+  nombre: "Francisco Javier Alvarez Martins",
+  direccion: "Avd. de Galicia Nº6 Atico D, 36207 Vigo, Pontevedra",
+  nif: "36142311L",
+  contacto: "franjam32@gmail.com / 637568682",
+  cuenta: "ES26 2080 0527 1630 0007 3732 ABANCA"
+};
+
+const MESES_ORDER = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+// Load persisted data or seed with import
+function loadData() {
+  try {
+    const saved = localStorage.getItem('fja_facturas');
+    if (saved) return JSON.parse(saved);
+  } catch(e) {}
+  return null;
+}
+function saveData() {
+  try { localStorage.setItem('fja_facturas', JSON.stringify({facturas: DB.facturas, clientes: DB.clientes})); } catch(e) {}
+}
+
+const SEED_FACTURAS = [{"NoFactura":"2026-0018","Fecha":"2026-04-08","Vencimiento":"2026-05-08","Trimestre":"T2","Ano":2026,"Mes":"abril","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"CURSO PPAA SAN RAFAEL ( 8 HORAS ) |1,00|240,00|240,00","Horas":1,"PrecioHora":240,"BaseImponible":240,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-36,"Total":204,"Estado":"Emitida"},{"NoFactura":"2026-0016","Fecha":"2026-03-30","Vencimiento":"2026-04-30","Trimestre":"T1","Ano":2026,"Mes":"marzo","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"Nº EXPEDIENTE: TR301K-2025/000173-5\nNº CURSO 2025/001188\nCURSO: SANT0208-TRANSPORTE SANITARIO MODALIDAD: TELEFORMACIÓN\nHORAS TELEFORMACIÓN UF0682 & UF0683: 11+48=59 horas |59,00|25,00|1475,00;\nHORAS PRESENCIALES UF0682: 4 |4,00|45,00|180,00;\nHORAS PRESENCIALES UF0683: 17 |17,00|45,00|765,00;\nHORAS TELEFORMACIÓN MF0072 |10,00|25,00|250,00","Horas":90,"PrecioHora":25,"BaseImponible":2670,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-400.5,"Total":2269.5,"Estado":"Emitida"},{"NoFactura":"2026-0017","Fecha":"2026-03-30","Vencimiento":"2026-04-29","Trimestre":"T1","Ano":2026,"Mes":"marzo","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"Pola tutorización de 30 horas de prácticas profesionais no laborables MP0140\nEXPEDIENTE: TR301K-2022/000173-5\nNo DE CURSO: 2025/001143\nCURSO: SANT0208-TRANSPORTE SANITARIO MODALIDAD: PRESENCIAL\nHoras impartidas 30\nCoste Hora: 1,41€ x 8 alumnos =11,28€/Hora |30,00|11,28|338,40","Horas":30,"PrecioHora":11.28,"BaseImponible":338.4,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-50.76,"Total":287.64,"Estado":"Emitida"},{"NoFactura":"2026-0015","Fecha":"2026-03-26","Vencimiento":"2026-04-25","Trimestre":"T1","Ano":2026,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA Xunta (Panxón) |1,00|150,00|150,00","Horas":1,"PrecioHora":150,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2026-0014","Fecha":"2026-03-25","Vencimiento":"2026-04-24","Trimestre":"T1","Ano":2026,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA Uvigo (Forestales Pontevedra) |1,00|150,00|150,00","Horas":1,"PrecioHora":150,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2026-0013","Fecha":"2026-03-24","Vencimiento":"2026-04-23","Trimestre":"T1","Ano":2026,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA Babe y Cia (Redondela) |1,00|150,00|150,00","Horas":1,"PrecioHora":150,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2026-0012","Fecha":"2026-03-23","Vencimiento":"2026-04-22","Trimestre":"T1","Ano":2026,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA Xunta (Panxón)\n23/03/2026 |1,00|150,00|150,00","Horas":1,"PrecioHora":150,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2026-0011","Fecha":"2026-03-16","Vencimiento":"2026-04-16","Trimestre":"T1","Ano":2026,"Mes":"marzo","Cliente":"TÉCNICAS DE EFICACIA SOCIAL S.L","NIF":"B15853088","Concepto":"Curso PPAA 16/03/2026\nSan Rafael |1,00|200,00|200,00","Horas":1,"PrecioHora":200,"BaseImponible":200,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-30,"Total":170,"Estado":"Emitida"},{"NoFactura":"2026-0010","Fecha":"2026-03-09","Vencimiento":"2026-04-08","Trimestre":"T1","Ano":2026,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA Xunta|1|150|150","Horas":null,"PrecioHora":null,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2026-0009","Fecha":"2026-03-07","Vencimiento":"2026-04-09","Trimestre":"T1","Ano":2026,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA GLS |1,00|150,00|150,00","Horas":1,"PrecioHora":150,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2026-0008","Fecha":"2026-03-06","Vencimiento":"2026-04-05","Trimestre":"T1","Ano":2026,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"CURSO PPAA  ELECNOR (Barro)|1|150|150","Horas":null,"PrecioHora":null,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2026-0006","Fecha":"2026-02-28","Vencimiento":"2026-03-30","Trimestre":"T1","Ano":2026,"Mes":"febrero","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2022/000173-5\nNº DE CURSO: 2025/001143\nCURSO: SANT0208-TRANSPORTE SANITARIO MODALIDAD: PRESENCIAL UF0683: 10 HORAS PRESENCIALES|10|45|450;MF0072: 25 HORAS|25|45|1125","Horas":null,"PrecioHora":null,"BaseImponible":1575,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-236.25,"Total":1338.75,"Estado":"Emitida"},{"NoFactura":"2026-0007","Fecha":"2026-02-28","Vencimiento":"2026-03-30","Trimestre":"T1","Ano":2026,"Mes":"febrero","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"No EXPEDIENTE: TR301K-2025/000173-5\nNo CURSO 2025/001188\nCURSO: SANT0208-TRANSPORTE SANITARIO MODALIDAD: TELEFORMACIÓN\nUF0677: 4,5 PRESENCIALES|4,5|45|202,5;UF0678: 21 HORAS PRESENCIALES (RECUP.)|21|45|945;UF0682: 5 HORAS PRESENCIALES|5|45|225;UF0677 & UF0678 & UF0682 TELEFORMACIÓN: 16+36+15 HORAS|67|20|1340","Horas":null,"PrecioHora":null,"BaseImponible":2712.5,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-406.875,"Total":2305.625,"Estado":"Emitida"},{"NoFactura":"2026-0005","Fecha":"2026-02-26","Vencimiento":"2026-03-28","Trimestre":"T1","Ano":2026,"Mes":"febrero","Cliente":"TÉCNICAS DE EFICACIA SOCIAL S.L","NIF":"B15853088","Concepto":"Impartir Charlas PPAA\n26/02/2026\nSan Rafael (Vigo)|1|200|200","Horas":null,"PrecioHora":null,"BaseImponible":200,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-30,"Total":170,"Estado":"Emitida"},{"NoFactura":"2026-0004","Fecha":"2026-02-13","Vencimiento":"2026-03-15","Trimestre":"T1","Ano":2026,"Mes":"febrero","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA Elecnor (Lalin)\n250Km totales\n19,85€ peajes|1|214,85|214,85","Horas":null,"PrecioHora":null,"BaseImponible":214.85,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-32.2275,"Total":182.6225,"Estado":"Emitida"},{"NoFactura":"2026-0002","Fecha":"2026-01-31","Vencimiento":"2026-03-02","Trimestre":"T1","Ano":2026,"Mes":"enero","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2022/000173-5\nNº DE CURSO: 2025/001143\nCURSO: SANT0208-TRANSPORTE SANITARIO MODALIDAD: PRESENCIAL\nHORAS PRESENCIALES UF0678: 15|15|35|525;HORAS PRESENCIALES UF0682: 5 horas|5|35|175;HORAS PRESENCIALES UF0683: 5 horas|15|35|525","Horas":null,"PrecioHora":null,"BaseImponible":1225,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-183.75,"Total":1041.25,"Estado":"Emitida"},{"NoFactura":"2026-0003","Fecha":"2026-01-31","Vencimiento":"2026-03-02","Trimestre":"T1","Ano":2026,"Mes":"enero","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"No EXPEDIENTE: TR301K-2025/000173-5\nNº CURSO 2025/001188\nCURSO: SANT0208-TRANSPORTE SANITARIO MODALIDAD: TELEFORMACIÓN\nHORAS TELEFORMACIÓN UF0681:47|47|35|1645;HORAS PRESENCIALES UF0681:2|2|35|70;HORAS PRESENCIALES UF0677:14,5|14,5|35|507,5;HORAS PRESENCIALES UF0677:25|25|35|875","Horas":null,"PrecioHora":null,"BaseImponible":3097.5,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-464.625,"Total":2632.875,"Estado":"Emitida"},{"NoFactura":"2026-0001","Fecha":"2026-01-22","Vencimiento":"2026-02-21","Trimestre":"T1","Ano":2026,"Mes":"enero","Cliente":"Pequemundo Galicia SL","NIF":"B94026085","Concepto":"Obradoiro Primeiros Auxilios Pediatricos|1|280|280","Horas":null,"PrecioHora":null,"BaseImponible":280,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-42,"Total":238,"Estado":"Emitida"},{"NoFactura":"2025-0048","Fecha":"2025-12-22","Vencimiento":"2026-01-21","Trimestre":"T4","Ano":2025,"Mes":"diciembre","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"IMPARTIR CURSO PPAA Residencia Altamar Vigo|4,5|30|135","Horas":null,"PrecioHora":null,"BaseImponible":135,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-20.25,"Total":114.75,"Estado":"Emitida"},{"NoFactura":"2025-0049","Fecha":"2025-12-22","Vencimiento":"2026-01-21","Trimestre":"T4","Ano":2025,"Mes":"diciembre","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"No EXPEDIENTE: TR301K-2025/000173-5\nNo CURSO 2025/001188\nCURSO: SANT0208-TRANSPORTE SANITARIO MODALIDAD: TELEFORMACIÓN\nHORAS TELEFORMACIÓN UF0679:|5|45|225;HORAS PRESENCIALAES UF0679:|2|45|90;HORAS PRESENCIALAES UF0680:|13|45|585;HORAS TELEFORMACIÓN UF0680:|47|45|2115","Horas":null,"PrecioHora":null,"BaseImponible":3015,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-452.25,"Total":2562.75,"Estado":"Emitida"},{"NoFactura":"2025-0050","Fecha":"2025-12-22","Vencimiento":"2026-01-21","Trimestre":"T4","Ano":2025,"Mes":"diciembre","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2022/000173-5\nNo DE CURSO: 2025/001143\nCURSO: SANT0208-TRANSPORTE SANITARIO MODALIDAD: PRESENCIAL\nHORAS PRESENCIALES UF0677: 20|20|45|900;HORAS PRESENCIALES UF0678: 10|10|45|450","Horas":null,"PrecioHora":null,"BaseImponible":1350,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-202.5,"Total":1147.5,"Estado":"Emitida"},{"NoFactura":"2025-0046","Fecha":"2025-11-30","Vencimiento":"2025-12-30","Trimestre":"T4","Ano":2025,"Mes":"noviembre","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2022/000173-5\nNo DE CURSO: 2025/001143\nCURSO: SANT0208-TRANSPORTE SANITARIO MODALIDAD: PRESENCIAL","Horas":null,"PrecioHora":null,"BaseImponible":2025,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-303.75,"Total":1721.25,"Estado":"Emitida"},{"NoFactura":"2025-0047","Fecha":"2025-11-30","Vencimiento":"2025-12-30","Trimestre":"T4","Ano":2025,"Mes":"noviembre","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"Nº EXPEDIENTE: TR301K-2025/000173-5\nNº CURSO 2025/001188\nCURSO: SANT0208-TRANSPORTE SANITARIO MODALIDAD: TELEFORMACIÓN","Horas":null,"PrecioHora":null,"BaseImponible":1485,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-222.75,"Total":1262.25,"Estado":"Emitida"},{"NoFactura":"2025-0045","Fecha":"2025-11-28","Vencimiento":"2025-12-28","Trimestre":"T4","Ano":2025,"Mes":"noviembre","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"Impartir como docente curso bonificado 4109 Conducción Eficiente|1|120|120","Horas":null,"PrecioHora":null,"BaseImponible":120,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-18,"Total":102,"Estado":"Emitida"},{"NoFactura":"2025-0044","Fecha":"2025-11-14","Vencimiento":"2025-12-06","Trimestre":"T4","Ano":2025,"Mes":"noviembre","Cliente":"Integral Nova Adviser SL","NIF":"B13975487","Concepto":"Impartir Curso DESA Cortizo \n20 alumnos|20|48|960","Horas":null,"PrecioHora":null,"BaseImponible":960,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-144,"Total":816,"Estado":"Emitida"},{"NoFactura":"2025-0042","Fecha":"2025-11-05","Vencimiento":"2025-12-05","Trimestre":"T4","Ano":2025,"Mes":"noviembre","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"primer concepto|3|50|150;segundo concepto|4|30|120","Horas":null,"PrecioHora":null,"BaseImponible":270,"IVA":0,"RetencionPct":0,"RetencionEUR":-40,"Total":229,"Estado":"Emitida"},{"NoFactura":"2025-0043","Fecha":"2025-11-05","Vencimiento":"2025-12-05","Trimestre":"T4","Ano":2025,"Mes":"noviembre","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2022/000173-5","Horas":null,"PrecioHora":null,"BaseImponible":1770,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-265.5,"Total":1504.5,"Estado":"Emitida"},{"NoFactura":"2025-0041","Fecha":"2025-10-22","Vencimiento":"1970-01-01","Trimestre":"T4","Ano":2025,"Mes":"octubre","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"IMPARTIR Curso PPAA CUVI|5|30|150","Horas":5,"PrecioHora":30,"BaseImponible":150,"IVA":0,"RetencionPct":15,"RetencionEUR":22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2025-0040","Fecha":"2025-10-20","Vencimiento":"2025-11-19","Trimestre":"T4","Ano":2025,"Mes":"octubre","Cliente":"Atalaia Schools S. L. ","NIF":"B2786064","Concepto":"IMPARTIR Charla PPAA Pediatricos familias|3|50|150;","Horas":2,"PrecioHora":100,"BaseImponible":200,"IVA":0,"RetencionPct":15,"RetencionEUR":30,"Total":170,"Estado":"Emitida"},{"NoFactura":"2025-0039","Fecha":"2025-10-10","Vencimiento":"2025-11-09","Trimestre":"T4","Ano":2025,"Mes":"octubre","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Impartir Curso SVB con Manejo del DESA Asc. Recreativa As Burgas - Ourense|1|210|210","Horas":1,"PrecioHora":210,"BaseImponible":210,"IVA":0,"RetencionPct":15,"RetencionEUR":31.5,"Total":178.5,"Estado":"Emitida"},{"NoFactura":"2025-0038","Fecha":"2025-10-07","Vencimiento":"2025-11-06","Trimestre":"T4","Ano":2025,"Mes":"octubre","Cliente":"Redtel Global Consulting Sociedad Limitada","NIF":"B27855857","Concepto":"Curso PPAA y DESA (Posumus)|1|500|500","Horas":1,"PrecioHora":500,"BaseImponible":500,"IVA":0,"RetencionPct":15,"RetencionEUR":75,"Total":425,"Estado":"Emitida"},{"NoFactura":"2025-0037","Fecha":"2025-10-06","Vencimiento":"2025-11-05","Trimestre":"T4","Ano":2025,"Mes":"octubre","Cliente":"Sindicato Labrego Galego","NIF":"G27023951","Concepto":"IMPARTICIÓN da formación de Primeiros Auxilios en ORDES|1|300|300","Horas":1,"PrecioHora":300,"BaseImponible":300,"IVA":0,"RetencionPct":15,"RetencionEUR":45,"Total":255,"Estado":"Emitida"},{"NoFactura":"2025-0036","Fecha":"2025-10-02","Vencimiento":"2025-11-01","Trimestre":"T4","Ano":2025,"Mes":"octubre","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso 8 Horas PPAA Casa Caridad Hogar San Jose|8|30|240","Horas":8,"PrecioHora":30,"BaseImponible":240,"IVA":0,"RetencionPct":15,"RetencionEUR":36,"Total":204,"Estado":"Emitida"},{"NoFactura":"2025-0034","Fecha":"2025-09-30","Vencimiento":"2025-10-30","Trimestre":"T3","Ano":2025,"Mes":"septiembre","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA CUVI|4|30|120","Horas":4,"PrecioHora":30,"BaseImponible":120,"IVA":0,"RetencionPct":15,"RetencionEUR":18,"Total":102,"Estado":"Emitida"},{"NoFactura":"2025-0035","Fecha":"2025-09-30","Vencimiento":"2025-10-30","Trimestre":"T3","Ano":2025,"Mes":"septiembre","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301R-2025/000026-0 SANT0208-TRANSPORTE SANITARIO|89|12|1090","Horas":89,"PrecioHora":12.25,"BaseImponible":1090,"IVA":0,"RetencionPct":15,"RetencionEUR":163.5,"Total":926.5,"Estado":"Emitida"},{"NoFactura":"2025-0033","Fecha":"2025-09-19","Vencimiento":"2025-10-19","Trimestre":"T3","Ano":2025,"Mes":"septiembre","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"CURSO DE PPAA Y MANEJO DEL DESFIBRILADOR VEDRA|1|222.5|222.5","Horas":1,"PrecioHora":222.5,"BaseImponible":222.5,"IVA":0,"RetencionPct":15,"RetencionEUR":33.38,"Total":189.13,"Estado":"Emitida"},{"NoFactura":"2025-0032","Fecha":"2025-09-18","Vencimiento":"2025-10-18","Trimestre":"T3","Ano":2025,"Mes":"septiembre","Cliente":"SOSLIFE7, S.L ","NIF":"B-76663335 ","Concepto":"CURSO DESA (8 ALUMNOS)|8|48|384","Horas":8,"PrecioHora":48,"BaseImponible":384,"IVA":0,"RetencionPct":15,"RetencionEUR":57.6,"Total":326.4,"Estado":"Emitida"},{"NoFactura":"2025-0031","Fecha":"2025-09-05","Vencimiento":"2025-10-05","Trimestre":"T3","Ano":2025,"Mes":"septiembre","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso Xunta PPAA IGAFA Illa de Arosa||179.95|179.95","Horas":null,"PrecioHora":179.95,"BaseImponible":179.95,"IVA":0,"RetencionPct":0.15,"RetencionEUR":26.99,"Total":152.96,"Estado":"Emitida"},{"NoFactura":"2025-0030","Fecha":"2025-09-02","Vencimiento":"2025-10-02","Trimestre":"T3","Ano":2025,"Mes":"septiembre","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso Xunta PPAA IGAFA Illa de Arosa||179.95|179.95","Horas":null,"PrecioHora":179.95,"BaseImponible":179.95,"IVA":0,"RetencionPct":0.15,"RetencionEUR":26.99,"Total":152.96,"Estado":"Emitida"},{"NoFactura":"2025-0029","Fecha":"2025-06-25","Vencimiento":"2025-07-25","Trimestre":"T2","Ano":2025,"Mes":"junio","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Formación Continuada DESA GRUPO 0042 AMAZON|1|270|270","Horas":1,"PrecioHora":270,"BaseImponible":270,"IVA":0,"RetencionPct":0.15,"RetencionEUR":40.5,"Total":229.5,"Estado":"Emitida"},{"NoFactura":"2025-0028","Fecha":"2025-06-23","Vencimiento":"2025-07-23","Trimestre":"T2","Ano":2025,"Mes":"junio","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Formación Continuada DESA GRUPO 0005 NODOSA|1|180|180","Horas":1,"PrecioHora":180,"BaseImponible":180,"IVA":0,"RetencionPct":0.15,"RetencionEUR":27,"Total":153,"Estado":"Emitida"},{"NoFactura":"2025-0027","Fecha":"2025-06-17","Vencimiento":"2025-07-17","Trimestre":"T2","Ano":2025,"Mes":"junio","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"PRIMEROS AUXILIOS DESA GRUPO 021 OURENSE|1|213.6|213.6","Horas":1,"PrecioHora":213.6,"BaseImponible":213.6,"IVA":0,"RetencionPct":0.15,"RetencionEUR":32.04,"Total":181.56,"Estado":"Emitida"},{"NoFactura":"2025-0026","Fecha":"2025-06-11","Vencimiento":"2025-07-11","Trimestre":"T2","Ano":2025,"Mes":"junio","Cliente":"Autoescola Cies SL","NIF":"B36252864","Concepto":"AF2024/003347 - Transporte Sanitario (16 horas)|16|30|480","Horas":16,"PrecioHora":30,"BaseImponible":480,"IVA":0,"RetencionPct":0.15,"RetencionEUR":72,"Total":408,"Estado":"Emitida"},{"NoFactura":"2025-0025","Fecha":"2025-06-01","Vencimiento":"2025-07-01","Trimestre":"T2","Ano":2025,"Mes":"junio","Cliente":"Autoescola Cies SL","NIF":"B36252864","Concepto":"AF2024/003347 - Transporte Sanitario (60 horas)|60|30|1800","Horas":60,"PrecioHora":30,"BaseImponible":1800,"IVA":0,"RetencionPct":0.15,"RetencionEUR":270,"Total":1530,"Estado":"Emitida"},{"NoFactura":"2025-0024","Fecha":"2025-05-28","Vencimiento":"2025-06-30","Trimestre":"T2","Ano":2025,"Mes":"mayo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"PRIMEROS AUXILIOS GRUPO:041|1|150|150","Horas":1,"PrecioHora":150,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2025-0023","Fecha":"2025-05-12","Vencimiento":"2025-06-10","Trimestre":"T2","Ano":2025,"Mes":"mayo","Cliente":"TÉCNICAS DE EFICACIA SOCIAL S.L","NIF":"B15853088","Concepto":"Curso PPAA San Rafael|1|200|200","Horas":1,"PrecioHora":200,"BaseImponible":200,"IVA":0,"RetencionPct":0.15,"RetencionEUR":30,"Total":170,"Estado":"Emitida"},{"NoFactura":"2025-0022","Fecha":"2025-05-10","Vencimiento":"2025-06-09","Trimestre":"T2","Ano":2025,"Mes":"mayo","Cliente":"Redtel Global Consulting Sociedad Limitada","NIF":"B27855857","Concepto":"Curso SVB y DESA presencial|1|250|250","Horas":1,"PrecioHora":250,"BaseImponible":250,"IVA":0,"RetencionPct":0.15,"RetencionEUR":37.5,"Total":212.5,"Estado":"Emitida"},{"NoFactura":"2025-0020","Fecha":"2025-05-07","Vencimiento":"2025-06-06","Trimestre":"T2","Ano":2025,"Mes":"mayo","Cliente":"Integral Nova Adviser SL","NIF":"B13975487","Concepto":"CURSO SVB Y DESA GRUPO 001|1|450|450","Horas":1,"PrecioHora":450,"BaseImponible":450,"IVA":0,"RetencionPct":0.15,"RetencionEUR":67.5,"Total":382.5,"Estado":"Emitida"},{"NoFactura":"2025-0021","Fecha":"2025-05-07","Vencimiento":"2025-06-06","Trimestre":"T2","Ano":2025,"Mes":"mayo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Formación Continuada PRIMEROS AUXILIOS VIGO|1|120|120","Horas":1,"PrecioHora":120,"BaseImponible":120,"IVA":0,"RetencionPct":0.15,"RetencionEUR":18,"Total":102,"Estado":"Emitida"},{"NoFactura":"2025-0018","Fecha":"2025-04-30","Vencimiento":"2025-01-06","Trimestre":"T2","Ano":2025,"Mes":"abril","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Formación Continuada DESA Sanxenxo|1|183|183","Horas":1,"PrecioHora":183,"BaseImponible":183,"IVA":0,"RetencionPct":0.15,"RetencionEUR":27.45,"Total":155.55,"Estado":"Emitida"},{"NoFactura":"2025-0019","Fecha":"2025-04-30","Vencimiento":"2025-05-30","Trimestre":"T2","Ano":2025,"Mes":"abril","Cliente":"Autoescola Cies SL","NIF":"B36252864","Concepto":"AF2024/003347 - Transporte Sanitario (2,5 horas)|2.5|30|75","Horas":2.5,"PrecioHora":30,"BaseImponible":75,"IVA":0,"RetencionPct":0.15,"RetencionEUR":11.25,"Total":63.75,"Estado":"Emitida"},{"NoFactura":"2025-0017","Fecha":"2025-04-25","Vencimiento":"2025-05-25","Trimestre":"T2","Ano":2025,"Mes":"abril","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"CURSO PRIMEROS AUXILIOS GRUPO: 061|1|150|150","Horas":1,"PrecioHora":150,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2025-0016","Fecha":"2025-04-24","Vencimiento":"2025-05-24","Trimestre":"T2","Ano":2025,"Mes":"abril","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"CURSO PRIMEROS AUXILIOS GRUPO: 034|1|186|186","Horas":1,"PrecioHora":186,"BaseImponible":186,"IVA":0,"RetencionPct":0.15,"RetencionEUR":27.9,"Total":158.1,"Estado":"Emitida"},{"NoFactura":"2025-0015","Fecha":"2025-04-12","Vencimiento":"2025-05-12","Trimestre":"T2","Ano":2025,"Mes":"abril","Cliente":"Autoescola Cies SL","NIF":"B36252864","Concepto":"AF2024/003345 - Transporte Sanitario (40 horas)|40|30|1200","Horas":40,"PrecioHora":30,"BaseImponible":1200,"IVA":0,"RetencionPct":0.15,"RetencionEUR":180,"Total":1020,"Estado":"Emitida"},{"NoFactura":"2025-0014","Fecha":"2025-03-26","Vencimiento":"2025-04-25","Trimestre":"T1","Ano":2025,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"CURSO PRIMEROS AUXILIOS GRUPO: 033|1|247.2|247.2","Horas":1,"PrecioHora":247.2,"BaseImponible":247.2,"IVA":0,"RetencionPct":0.15,"RetencionEUR":37.08,"Total":210.12,"Estado":"Emitida"},{"NoFactura":"2025-0013","Fecha":"2025-03-25","Vencimiento":"2025-04-25","Trimestre":"T1","Ano":2025,"Mes":"marzo","Cliente":"Autoescola Cies SL","NIF":"B36252864","Concepto":"AF2024/003345 - Transporte Sanitario (6 horas)|6|30|180","Horas":6,"PrecioHora":30,"BaseImponible":180,"IVA":0,"RetencionPct":0.15,"RetencionEUR":27,"Total":153,"Estado":"Emitida"},{"NoFactura":"2025-0012","Fecha":"2025-03-24","Vencimiento":"2025-04-23","Trimestre":"T1","Ano":2025,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PRIMEROS AUXILIOS SEMIAUTOMATICO ASPANAS|1|210|210","Horas":1,"PrecioHora":210,"BaseImponible":210,"IVA":0,"RetencionPct":0.15,"RetencionEUR":31.5,"Total":178.5,"Estado":"Emitida"},{"NoFactura":"2025-0011","Fecha":"2025-03-19","Vencimiento":"2025-04-18","Trimestre":"T1","Ano":2025,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PRIMEROS AUXILIOS SEMIAUTOMATICO COLEGIO MIRAFLORES|1|210|210","Horas":1,"PrecioHora":210,"BaseImponible":210,"IVA":0,"RetencionPct":0.15,"RetencionEUR":31.5,"Total":178.5,"Estado":"Emitida"},{"NoFactura":"2025-0010","Fecha":"2025-03-17","Vencimiento":"2025-04-16","Trimestre":"T1","Ano":2025,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PRIMEROS AUXILIOS SEMIAUTOMATICO ASPANAS A PEROXA|1|218.4|218.4","Horas":1,"PrecioHora":218.4,"BaseImponible":218.4,"IVA":0,"RetencionPct":0.15,"RetencionEUR":32.76,"Total":185.64,"Estado":"Emitida"},{"NoFactura":"2025-0008","Fecha":"2025-03-13","Vencimiento":"2025-11-04","Trimestre":"T1","Ano":2025,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso DESA Aspanaex Ourense|1|210|210","Horas":1,"PrecioHora":210,"BaseImponible":210,"IVA":0,"RetencionPct":0.15,"RetencionEUR":31.5,"Total":178.5,"Estado":"Emitida"},{"NoFactura":"2025-0009","Fecha":"2025-03-13","Vencimiento":"2025-11-04","Trimestre":"T1","Ano":2025,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA Porriño|1|150|150","Horas":1,"PrecioHora":150,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2025-0007","Fecha":"2025-03-12","Vencimiento":"2025-04-11","Trimestre":"T1","Ano":2025,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso DESA Aspanaex Ourense|1|210|210","Horas":1,"PrecioHora":210,"BaseImponible":210,"IVA":0,"RetencionPct":0.15,"RetencionEUR":31.5,"Total":178.5,"Estado":"Emitida"},{"NoFactura":"2025-0006","Fecha":"2025-03-11","Vencimiento":"2025-04-11","Trimestre":"T1","Ano":2025,"Mes":"marzo","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA Pontevedra|1|150|150","Horas":1,"PrecioHora":150,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2025-0005","Fecha":"2025-02-19","Vencimiento":"2025-03-21","Trimestre":"T1","Ano":2025,"Mes":"febrero","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA Pontevedra|1|150|150","Horas":1,"PrecioHora":150,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2025-0004","Fecha":"2025-02-18","Vencimiento":"2025-03-20","Trimestre":"T1","Ano":2025,"Mes":"febrero","Cliente":"Autoescola Cies SL","NIF":"B36252864","Concepto":"AF2024/003346 - Atención Sanitaria|54|30|1620","Horas":54,"PrecioHora":30,"BaseImponible":1620,"IVA":0,"RetencionPct":0.15,"RetencionEUR":243,"Total":1377,"Estado":"Emitida"},{"NoFactura":"2025-0003","Fecha":"2025-02-12","Vencimiento":"2025-03-14","Trimestre":"T1","Ano":2025,"Mes":"febrero","Cliente":"Vitaly health services S.L.U.","NIF":"B06290241","Concepto":"Curso PPAA Elecnor A Coruña|1|220|220","Horas":1,"PrecioHora":220,"BaseImponible":220,"IVA":0,"RetencionPct":0.15,"RetencionEUR":33,"Total":187,"Estado":"Emitida"},{"NoFactura":"2025-0002","Fecha":"2025-01-31","Vencimiento":"2025-02-03","Trimestre":"T1","Ano":2025,"Mes":"enero","Cliente":"Autoescola Cies SL","NIF":"B36252864","Concepto":"AF2024/003346 - Atención Sanitaria a Múltiples Víctimas|124|30|3720","Horas":124,"PrecioHora":30,"BaseImponible":3720,"IVA":0,"RetencionPct":0.15,"RetencionEUR":558,"Total":3162,"Estado":"Emitida"},{"NoFactura":"2025-0001","Fecha":"2025-01-18","Vencimiento":"2025-02-17","Trimestre":"T1","Ano":2025,"Mes":"enero","Cliente":"Pequemundo Galicia SL","NIF":"B94026085","Concepto":"OBRADOIRO PRIMEIROS AUXILIOS PEDIATRICOS|1|280|280","Horas":1,"PrecioHora":280,"BaseImponible":280,"IVA":0,"RetencionPct":0.15,"RetencionEUR":42,"Total":238,"Estado":"Emitida"},{"NoFactura":"2024-21","Fecha":"2024-05-10","Vencimiento":"2024-06-09","Trimestre":"T2","Ano":2024,"Mes":"mayo","Cliente":"CUALTIS S.L.U.","NIF":"B84527977","Concepto":"POR IMPARTIR PRIMEROS AUXILIOS FORMACIÓN INTEGRAL PARA LA INTEGRACIÓN DE LA PRL|5|30|150","Horas":5,"PrecioHora":30,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2024-20","Fecha":"2024-05-09","Vencimiento":"2024-06-08","Trimestre":"T2","Ano":2024,"Mes":"mayo","Cliente":"CUALTIS S.L.U.","NIF":"B84527977","Concepto":"Curso PRIMEIROS AUXILIOS CON MANEXO DE DESFIBRILACIOR SEMIAUTOMATICO EXTERNO|5|30|150","Horas":5,"PrecioHora":30,"BaseImponible":150,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-22.5,"Total":127.5,"Estado":"Emitida"},{"NoFactura":"2024-19","Fecha":"2024-05-08","Vencimiento":"2024-06-07","Trimestre":"T2","Ano":2024,"Mes":"mayo","Cliente":"CUALTIS S.L.U.","NIF":"B84527977","Concepto":"POR IMPARTIR COMO DOCENTE EL CURSO DE PRL DE PPAA|4|30|138","Horas":4,"PrecioHora":30,"BaseImponible":138,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-20.7,"Total":117.3,"Estado":"Emitida"},{"NoFactura":"2024-18","Fecha":"2024-05-07","Vencimiento":"2024-06-06","Trimestre":"T2","Ano":2024,"Mes":"mayo","Cliente":"CUALTIS S.L.U.","NIF":"B84527977","Concepto":"IMPARTIR COMO DOCENTE el curso de PRL DE PPAA|4|30|120","Horas":4,"PrecioHora":30,"BaseImponible":120,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-18,"Total":102,"Estado":"Emitida"},{"NoFactura":"2024-17","Fecha":"2024-05-04","Vencimiento":"2024-06-03","Trimestre":"T2","Ano":2024,"Mes":"mayo","Cliente":"Redtel Global Consulting Sociedad Limitada","NIF":"B27855857","Concepto":"IMPARTIR COMO DOCENTE el curso de PP.AA.|5|50|250","Horas":5,"PrecioHora":50,"BaseImponible":250,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-37.5,"Total":212.5,"Estado":"Emitida"},{"NoFactura":"2024-16","Fecha":"2024-04-30","Vencimiento":"2024-05-30","Trimestre":"T2","Ano":2024,"Mes":"abril","Cliente":"GERIATROS, S.A.U.","NIF":"A36780245","Concepto":"Pola impartición de 15 horas SANT0208 Transporte sanitario|15|30|450","Horas":15,"PrecioHora":30,"BaseImponible":450,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-67.5,"Total":382.5,"Estado":"Emitida"},{"NoFactura":"2024-15","Fecha":"2024-04-29","Vencimiento":"2024-05-14","Trimestre":"T2","Ano":2024,"Mes":"abril","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2023/000134-5 SANT0208-TRANSPORTE SANITARIO PRESENCIALES UF0678: 16 HORAS UF0682: 13 HORAS|32|30|1796","Horas":32,"PrecioHora":30,"BaseImponible":1796,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-269.4,"Total":1526.6,"Estado":"Emitida"},{"NoFactura":"2024-14","Fecha":"2024-04-25","Vencimiento":"2024-05-25","Trimestre":"T2","Ano":2024,"Mes":"abril","Cliente":"CUALTIS S.L.U.","NIF":"B84527977","Concepto":"PRIMEIROS AUXILIOS CON MANEXO DE DESFIBRILADOR SEMIAUTOMÁTICO EXTERNO|5|30|168","Horas":5,"PrecioHora":30,"BaseImponible":168,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-25.2,"Total":142.8,"Estado":"Emitida"},{"NoFactura":"2024-13","Fecha":"2024-04-24","Vencimiento":"2024-05-24","Trimestre":"T2","Ano":2024,"Mes":"abril","Cliente":"CIFP MANUEL ANTONIO","NIF":"Q8655094D","Concepto":"Impartir como Docente en el curso SANT0208 Transporte sanitario Inmovilización y movilización|4|50|200","Horas":4,"PrecioHora":50,"BaseImponible":200,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-30,"Total":170,"Estado":"Emitida"},{"NoFactura":"2024-12","Fecha":"2024-04-18","Vencimiento":"2024-05-18","Trimestre":"T2","Ano":2024,"Mes":"abril","Cliente":"GERIATROS, S.A.U.","NIF":"A36780245","Concepto":"Pola tutorización de 160 horas prácticas SANT0208|160|31.02|4963.2","Horas":160,"PrecioHora":31.02,"BaseImponible":4963.2,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-744.48,"Total":4218.72,"Estado":"Emitida"},{"NoFactura":"2024-11","Fecha":"2024-04-17","Vencimiento":"2024-05-17","Trimestre":"T2","Ano":2024,"Mes":"abril","Cliente":"CIFP MANUEL ANTONIO","NIF":"Q8655094D","Concepto":"Impartir como Docente SANT0208 Apoyo SVB y SVA|4|50|200","Horas":4,"PrecioHora":50,"BaseImponible":200,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-30,"Total":170,"Estado":"Emitida"},{"NoFactura":"2024-10","Fecha":"2024-04-16","Vencimiento":"2024-04-18","Trimestre":"T2","Ano":2024,"Mes":"abril","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2023/000134-5 SANT0208 UF0683 5h MF0072 19h|24|30|720","Horas":24,"PrecioHora":30,"BaseImponible":720,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-108,"Total":612,"Estado":"Emitida"},{"NoFactura":"2024-9","Fecha":"2024-04-11","Vencimiento":"2024-05-11","Trimestre":"T2","Ano":2024,"Mes":"abril","Cliente":"CUALTIS S.L.U.","NIF":"B84527977","Concepto":"CURSO PRÁCTICO EN PRL E PRIMEIROS AUXILIOS PARA PERSOAL NON DOCENTE|3|40|120","Horas":3,"PrecioHora":40,"BaseImponible":120,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-18,"Total":102,"Estado":"Emitida"},{"NoFactura":"2024-7","Fecha":"2024-03-27","Vencimiento":"2024-04-26","Trimestre":"T1","Ano":2024,"Mes":"marzo","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2023/000134-5 SANT0208 UF0678: 10h UF0682: 10h UF0683: 20h|40|30|1200","Horas":40,"PrecioHora":30,"BaseImponible":1200,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-180,"Total":1020,"Estado":"Emitida"},{"NoFactura":"2024-8","Fecha":"2024-03-27","Vencimiento":"2024-04-26","Trimestre":"T1","Ano":2024,"Mes":"marzo","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2023/000134-5 SANT0208 PRESENCIALES UF0681 UF0677|21|30|1389","Horas":21,"PrecioHora":30,"BaseImponible":1389,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-208.35,"Total":1180.65,"Estado":"Emitida"},{"NoFactura":"2024-4","Fecha":"2024-02-29","Vencimiento":"2024-03-30","Trimestre":"T1","Ano":2024,"Mes":"febrero","Cliente":"GERIATROS, S.A.U.","NIF":"A36780245","Concepto":"Pola impartición de 10 horas SANT0208 Transporte sanitario|10|30|300","Horas":10,"PrecioHora":30,"BaseImponible":300,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-45,"Total":255,"Estado":"Emitida"},{"NoFactura":"2024-5","Fecha":"2024-02-29","Vencimiento":"2024-03-30","Trimestre":"T1","Ano":2024,"Mes":"febrero","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2023/000134-5 SANT0208 TELEFORMACIÓN PRESENCIALES UF0679|13|30|1127","Horas":13,"PrecioHora":30,"BaseImponible":1127,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-169.05,"Total":957.95,"Estado":"Emitida"},{"NoFactura":"2024-6","Fecha":"2024-02-29","Vencimiento":"2024-03-30","Trimestre":"T1","Ano":2024,"Mes":"febrero","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2023/000134-5 SANT0208 UF0677: 35h UF0678: 15h|50|30|1500","Horas":50,"PrecioHora":30,"BaseImponible":1500,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-225,"Total":1275,"Estado":"Emitida"},{"NoFactura":"2024-1","Fecha":"2024-01-31","Vencimiento":"2024-03-01","Trimestre":"T1","Ano":2024,"Mes":"enero","Cliente":"GERIATROS, S.A.U.","NIF":"A36780245","Concepto":"Pola impartición de 50 horas SANT0208 Transporte sanitario|50|30|1500","Horas":50,"PrecioHora":30,"BaseImponible":1500,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-225,"Total":1275,"Estado":"Emitida"},{"NoFactura":"2024-2","Fecha":"2024-01-31","Vencimiento":"2024-01-31","Trimestre":"T1","Ano":2024,"Mes":"enero","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2023/000134-5 SANT0208 UF0680 30h UF0681 10h|40|30|1200","Horas":40,"PrecioHora":30,"BaseImponible":1200,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-180,"Total":1020,"Estado":"Emitida"},{"NoFactura":"2024-3","Fecha":"2024-01-31","Vencimiento":"2024-01-31","Trimestre":"T1","Ano":2024,"Mes":"enero","Cliente":"ICA FORMACION SL","NIF":"B36995934","Concepto":"EXPEDIENTE: TR301K-2023/000134-5 SANT0208 TELEFORMACIÓN UF0679|9|30|655","Horas":9,"PrecioHora":30,"BaseImponible":655,"IVA":0,"RetencionPct":0.15,"RetencionEUR":-98.25,"Total":556.75,"Estado":"Emitida"}];
+
+const SEED_CLIENTES = [{"Codigo":"C-011","NombreCliente":"Academia Rúa Nova SL","NIF":"B-32367302","Direccion":"C/ Benito Vicetto 6 Bajo","CPMunicipio":"32004 Ourense","Provincia":"Ourense","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-012","NombreCliente":"ANPA Gonderan","NIF":"G36718674","Direccion":"Rúa Gonderan nº 42","CPMunicipio":"36206 Vigo","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-030","NombreCliente":"ASOC ANPA XEVE","NIF":"G36198737","Direccion":"RÚA SOBRAL No26","CPMunicipio":"36150 Santo André de Xeve","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-013","NombreCliente":"Asociación Escola Rosalía de Castro","NIF":"G36613966","Direccion":"Carretera de Bembrive 91","CPMunicipio":"36214 Vigo","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-010","NombreCliente":"Atalaia Schools S. L.","NIF":"B2786064","Direccion":"Rúa Atalaia 42","CPMunicipio":"Vigo","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":"atalaiaocastro@gmail.com","Web":null},{"Codigo":"C-001","NombreCliente":"Autoescola Cies SL","NIF":"B36252864","Direccion":"Avd. Ramón Cabanillas 208","CPMunicipio":"36950 Moaña","Provincia":"Pontevedra","Pais":"España","Telefono":"661338173","Email":null,"Web":null},{"Codigo":"C-014","NombreCliente":"CIFP Manuel Antonio","NIF":"Q8655094D","Direccion":"Av. de Madrid, s/n","CPMunicipio":"36214 Vigo","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-015","NombreCliente":"Cismedia Formación SL","NIF":"B36936409","Direccion":"Avda. Ramón Nieto 133, Bajo","CPMunicipio":"36205 Vigo","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-016","NombreCliente":"Clece SA","NIF":"A-80364243","Direccion":"Avda. Manoteras 46 Bis 2ª Planta","CPMunicipio":"28050 Madrid","Provincia":"Madrid","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-017","NombreCliente":"Clece Vitam SA","NIF":"A87045456","Direccion":"Avda. Manoteras 46 Bis 2ª Planta","CPMunicipio":"28050 Madrid","Provincia":"Madrid","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-018","NombreCliente":"Concello de Covelo","NIF":"P3601300A","Direccion":"Praza Mestre Cerviño 2","CPMunicipio":"36872 Covelo","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-019","NombreCliente":"Cruz Roja Española – A.C. Vigo","NIF":"Q2866001G","Direccion":"C/ Teófilo Llorente 8","CPMunicipio":"36202 Vigo","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-028","NombreCliente":"CUALTIS S.L.U.","NIF":"B84527977","Direccion":"Rúa Padre Seixas, 34 Bajo","CPMunicipio":"36209 Vigo","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-020","NombreCliente":"FEREGA-CECA","NIF":"R2800244B","Direccion":"Plaza de Europa 10A, 2ª Planta","CPMunicipio":"15707 Santiago de Compostela","Provincia":"A Coruña","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-029","NombreCliente":"GERIATROS, S.A.U.","NIF":"A36780245","Direccion":"AVDA. GARCIA BARBON","CPMunicipio":"36201 VIGO","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-008","NombreCliente":"ICA FORMACION SL","NIF":"B36995934","Direccion":"C/ PORTELA 12 INT","CPMunicipio":"36205 VIGO","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-021","NombreCliente":"IES de Rodeira","NIF":"Q8655509A","Direccion":"Av. de Ourense s/n","CPMunicipio":"36940 Cangas","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-002","NombreCliente":"Integral Nova Adviser SL","NIF":"B13975487","Direccion":"CALLE RIO SALAS, Nº28 1 IZ.","CPMunicipio":"32001 Ourense","Provincia":"Ourense","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-003","NombreCliente":"Pequemundo Galicia SL","NIF":"B94026085","Direccion":"C/ uruguay 9 bajo","CPMunicipio":"36740 Tomiño","Provincia":"Pontevedra","Pais":"España","Telefono":"649394032","Email":"escuela@miprimerpaso.es","Web":null},{"Codigo":"C-004","NombreCliente":"Redtel Global Consulting Sociedad Limitada","NIF":"B27855857","Direccion":"Calle areal 104 - Bj","CPMunicipio":"36201 Vigo","Provincia":"Pontevedra","Pais":"España","Telefono":"986176817","Email":null,"Web":null},{"Codigo":"C-023","NombreCliente":"Samain Servizos A Comunidade SA","NIF":"A27843192","Direccion":"Plaza América nº 1, Bloque 1, 1ª","CPMunicipio":"36211 Vigo","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-009","NombreCliente":"Sindicato Labrego Galego","NIF":"G27023951","Direccion":"Rúa Ofelia nieto, 13-23 Baixo","CPMunicipio":"15705 Santiago de Compostela","Provincia":"A Coruña","Pais":"España","Telefono":"981554147","Email":null,"Web":null},{"Codigo":"C-007","NombreCliente":"SOSLIFE7, S.L","NIF":"B-76663335","Direccion":"Riobao 35, Sada","CPMunicipio":"15160 A Coruña","Provincia":"A Coruña","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-005","NombreCliente":"TÉCNICAS DE EFICACIA SOCIAL S.L","NIF":"B15853088","Direccion":"ALCALDE GREGORIO ESPINO, 85-BAJO","CPMunicipio":"36205 VIGO","Provincia":"Pontevedra","Pais":"España","Telefono":null,"Email":null,"Web":null},{"Codigo":"C-006","NombreCliente":"Vitaly health services S.L.U.","NIF":"B06290241","Direccion":"Avenida de la innovación, 2","CPMunicipio":"06006 Badajoz","Provincia":"Badajoz","Pais":"España","Telefono":null,"Email":"MLHermidaA@cualtis.com","Web":"www.preving.com"}];
+
+const saved = loadData();
+const DB = {
+  facturas: saved ? saved.facturas : JSON.parse(JSON.stringify(SEED_FACTURAS)),
+  clientes: saved ? saved.clientes : JSON.parse(JSON.stringify(SEED_CLIENTES))
+};
+
+// ══════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════
+const eur = v => {
+  if (v == null || isNaN(v)) return '—';
+  return new Intl.NumberFormat('es-ES', {style:'currency', currency:'EUR', minimumFractionDigits:2}).format(v);
+};
+const fmtDate = d => d ? d.substring(0,10) : '—';
+const getMes = f => {
+  if (!f) return 'enero';
+  const m = parseInt(f.substring(5,7)) - 1;
+  return MESES_ORDER[m];
+};
+const getTrim = f => {
+  if (!f) return 'T1';
+  const m = parseInt(f.substring(5,7));
+  return m <= 3 ? 'T1' : m <= 6 ? 'T2' : m <= 9 ? 'T3' : 'T4';
+};
+const getAno = f => f ? parseInt(f.substring(0,4)) : new Date().getFullYear();
+const abs = v => Math.abs(v || 0);
+
+function getYears() {
+  const y = [...new Set(DB.facturas.map(f => f.Ano || getAno(f.Fecha)))].sort((a,b)=>b-a);
+  return y;
+}
+
+function getStatsForYear(year) {
+  const fs = DB.facturas.filter(f => (f.Ano || getAno(f.Fecha)) == year);
+  const base = fs.reduce((s, f) => s + (f.BaseImponible || 0), 0);
+  const ret = fs.reduce((s, f) => s + abs(f.RetencionEUR), 0);
+  const neto = base - ret;
+  const clientes = new Set(fs.map(f => f.Cliente)).size;
+  return { base, ret, neto, count: fs.length, clientes };
+}
+
+function getMensualForYear(year) {
+  const result = {};
+  MESES_ORDER.forEach(m => result[m] = 0);
+  DB.facturas.filter(f => (f.Ano || getAno(f.Fecha)) == year).forEach(f => {
+    const m = f.Mes || getMes(f.Fecha);
+    result[m] = (result[m] || 0) + (f.BaseImponible || 0);
+  });
+  return result;
+}
+
+function getTrimestralForYear(year) {
+  const result = { T1: {base:0,neto:0,count:0}, T2: {base:0,neto:0,count:0}, T3: {base:0,neto:0,count:0}, T4: {base:0,neto:0,count:0} };
+  DB.facturas.filter(f => (f.Ano || getAno(f.Fecha)) == year).forEach(f => {
+    const t = f.Trimestre || getTrim(f.Fecha);
+    if (!result[t]) return;
+    result[t].base += (f.BaseImponible || 0);
+    result[t].neto += (f.Total || 0);
+    result[t].count++;
+  });
+  return result;
+}
+
+function nextInvoiceNum(year) {
+  const prefix = `${year}-`;
+  const nums = DB.facturas
+    .filter(f => String(f.NoFactura).startsWith(prefix))
+    .map(f => parseInt(String(f.NoFactura).replace(prefix, '')) || 0);
+  const next = nums.length ? Math.max(...nums) + 1 : 1;
+  return `${year}-${String(next).padStart(4, '0')}`;
+}
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let dashYear = getYears()[0] || 2026;
+let filterYear = 'todos';
+let filterTrim = 'todos';
+let searchTerm = '';
+let editTarget = null;
+let editType = null;
+let nuevaConceptos = [{desc:'', qty:'', precio:'', base:''}];
+
+// ══════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════
+function showScreen(id, btn) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'dashboard') renderDashboard();
+  if (id === 'facturas') renderFacturas();
+  if (id === 'nueva') renderNueva();
+  if (id === 'clientes') renderClientes();
+  if (id === 'informes') renderInformes();
+}
+
+// ══════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════
+let chartMode = 'mensual';
+let chartData = []; // {label, value, sublabel?}
+
+function setChartMode(mode, btn) {
+  chartMode = mode;
+  document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  drawChart();
+}
+
+function renderDashboard() {
+  const years = getYears();
+  document.getElementById('topBadge').textContent = dashYear;
+
+  // Year tabs
+  document.getElementById('yearTabs').innerHTML = years.map(y =>
+    `<button class="year-tab ${y==dashYear?'active':''}" onclick="setDashYear(${y})">${y}</button>`
+  ).join('');
+
+  // Stats
+  const s = getStatsForYear(dashYear);
+  const prev = getStatsForYear(dashYear - 1);
+  const diff = prev.base > 0 ? ((s.base - prev.base) / prev.base * 100).toFixed(0) : null;
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Facturado bruto</div>
+      <div class="stat-value green">${eur(s.base)}</div>
+      ${diff !== null ? `<div class="stat-sub">${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)}% vs ${dashYear-1}</div>` : ''}
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Neto cobrado</div>
+      <div class="stat-value purple">${eur(s.neto)}</div>
+      <div class="stat-sub">Ret. ${eur(s.ret)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Facturas</div>
+      <div class="stat-value">${s.count}</div>
+      <div class="stat-sub">Media ${eur(s.count > 0 ? s.base/s.count : 0)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Clientes activos</div>
+      <div class="stat-value">${s.clientes}</div>
+      <div class="stat-sub">Ejercicio ${dashYear}</div>
+    </div>
+  `;
+
+  drawChart();
+
+  // Trimestral table
+  const trim = getTrimestralForYear(dashYear);
+  const totalBase = Object.values(trim).reduce((s,t)=>s+t.base,0);
+  const totalNeto = Object.values(trim).reduce((s,t)=>s+t.neto,0);
+  document.getElementById('trimTableWrap').innerHTML = `
+    <table class="trim-table">
+      <thead><tr><th>Trim.</th><th>Base €</th><th>Neto €</th><th>Facturas</th></tr></thead>
+      <tbody>
+        ${['T1','T2','T3','T4'].map(t => `
+          <tr>
+            <td>${t}</td>
+            <td>${trim[t].base > 0 ? eur(trim[t].base) : '—'}</td>
+            <td>${trim[t].neto > 0 ? eur(trim[t].neto) : '—'}</td>
+            <td>${trim[t].count || '—'}</td>
+          </tr>
+        `).join('')}
+        <tr>
+          <td>TOTAL</td>
+          <td>${eur(totalBase)}</td>
+          <td>${eur(totalNeto)}</td>
+          <td>${DB.facturas.filter(f=>(f.Ano||getAno(f.Fecha))==dashYear).length}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+}
+
+function setDashYear(y) { dashYear = y; renderDashboard(); }
+
+// ── Canvas chart engine ──
+function drawChart() {
+  const canvas = document.getElementById('mainChart');
+  if (!canvas) return;
+
+  // Build data
+  if (chartMode === 'mensual') {
+    const mensual = getMensualForYear(dashYear);
+    chartData = MESES_ORDER.map(m => ({
+      label: m.substring(0,3),
+      fullLabel: m.charAt(0).toUpperCase() + m.slice(1),
+      value: mensual[m] || 0
+    }));
+    document.getElementById('chartTitleLabel').textContent = `Mensual ${dashYear}`;
+  } else if (chartMode === 'trimestral') {
+    const trim = getTrimestralForYear(dashYear);
+    chartData = ['T1','T2','T3','T4'].map(t => ({
+      label: t, fullLabel: `${t} · ${dashYear}`, value: trim[t].base || 0, sub: `${trim[t].count} fact.`
+    }));
+    document.getElementById('chartTitleLabel').textContent = `Trimestral ${dashYear}`;
+  } else {
+    // anual histórico
+    const years = getYears().slice().reverse();
+    chartData = years.map(y => {
+      const s = getStatsForYear(y);
+      return { label: String(y), fullLabel: `Año ${y}`, value: s.base, sub: `${s.count} fact.` };
+    });
+    document.getElementById('chartTitleLabel').textContent = 'Histórico anual';
+  }
+
+  const total = chartData.reduce((s,d) => s+d.value, 0);
+  document.getElementById('chartTotal').textContent = `Total: ${eur(total)}`;
+
+  const dpr = window.devicePixelRatio || 1;
+  const wrap = canvas.parentElement;
+  const W = wrap.clientWidth;
+  const H = 160;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const PAD_L = 8, PAD_R = 8, PAD_T = 28, PAD_B = 28;
+  const chartW = W - PAD_L - PAD_R;
+  const chartH = H - PAD_T - PAD_B;
+  const n = chartData.length;
+  const gap = Math.max(2, chartW * 0.015);
+  const barW = (chartW - gap * (n - 1)) / n;
+  const maxVal = Math.max(...chartData.map(d => d.value), 1);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(46,46,52,0.8)';
+  ctx.lineWidth = 1;
+  [0.25, 0.5, 0.75, 1].forEach(f => {
+    const y = PAD_T + chartH - chartH * f;
+    ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(PAD_L + chartW, y); ctx.stroke();
+    // Grid value label
+    const gridVal = maxVal * f;
+    ctx.fillStyle = 'rgba(107,107,120,0.7)';
+    ctx.font = `${7 * dpr / dpr}px DM Mono, monospace`;
+    ctx.textAlign = 'left';
+    const label = gridVal >= 1000 ? (gridVal/1000).toFixed(1)+'k' : gridVal.toFixed(0);
+    ctx.fillText(label + '€', PAD_L + 2, y - 3);
+  });
+
+  // Bars
+  chartData.forEach((d, i) => {
+    const x = PAD_L + i * (barW + gap);
+    const barH2 = d.value > 0 ? Math.max((d.value / maxVal) * chartH, 2) : 0;
+    const y = PAD_T + chartH - barH2;
+
+    // Gradient fill
+    const grad = ctx.createLinearGradient(x, y, x, PAD_T + chartH);
+    grad.addColorStop(0, d.value > 0 ? '#00d4a1' : '#2e2e34');
+    grad.addColorStop(1, d.value > 0 ? 'rgba(0,212,161,0.35)' : 'rgba(46,46,52,0.2)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    const r = Math.min(3, barW / 2);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + barW - r, y);
+    ctx.quadraticCurveTo(x + barW, y, x + barW, y + r);
+    ctx.lineTo(x + barW, PAD_T + chartH);
+    ctx.lineTo(x, PAD_T + chartH);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Value label above bar (if bar is tall enough or always for trimestral/anual)
+    if (d.value > 0) {
+      const valStr = d.value >= 1000 ? (d.value/1000).toFixed(1)+'k' : d.value.toFixed(0);
+      ctx.fillStyle = '#00d4a1';
+      ctx.font = `bold ${Math.min(10, barW * 0.55)}px DM Mono, monospace`;
+      ctx.textAlign = 'center';
+      const textY = Math.max(y - 3, PAD_T + 10);
+      if (barH2 > 14 || n <= 6) ctx.fillText(valStr, x + barW / 2, textY);
+    }
+
+    // X label
+    ctx.fillStyle = 'rgba(107,107,120,0.9)';
+    ctx.font = `${Math.min(9, barW * 0.6)}px DM Mono, monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(d.label, x + barW / 2, PAD_T + chartH + 14);
+  });
+
+  // Touch / mouse interactivity — attach on wrap
+  const wrapEl = document.querySelector('.chart-canvas-wrap');
+  if (!wrapEl._chartEventsSet) {
+    wrapEl._chartEventsSet = true;
+    const showTip2 = (clientX, clientY) => {
+      const cvs = document.getElementById('mainChart');
+      if (!cvs) return;
+      const rect = cvs.getBoundingClientRect();
+      const rx = clientX - rect.left;
+      const nd = chartData.length;
+      if (nd === 0) return;
+      const cW = rect.width;
+      const pL = 8, pR = 8;
+      const cW2 = cW - pL - pR;
+      const gp = Math.max(2, cW2 * 0.015);
+      const bW = (cW2 - gp * (nd - 1)) / nd;
+      let found = -1;
+      for (let i = 0; i < nd; i++) {
+        const bx = pL + i * (bW + gp);
+        if (rx >= bx && rx <= bx + bW) { found = i; break; }
+      }
+      if (found < 0) { hideTip2(); return; }
+      const d = chartData[found];
+      const tip = document.getElementById('chartTooltip');
+      document.getElementById('tooltipLabel').textContent = d.fullLabel + (d.sub ? ' · ' + d.sub : '');
+      document.getElementById('tooltipVal').textContent = eur(d.value);
+      tip.classList.add('visible');
+      const tw = tip.offsetWidth || 140;
+      const th = tip.offsetHeight || 50;
+      const vw = window.innerWidth;
+      let tx = clientX + 12;
+      let ty = clientY - th - 8;
+      if (tx + tw > vw - 8) tx = clientX - tw - 12;
+      if (ty < 8) ty = clientY + 16;
+      tip.style.left = tx + 'px';
+      tip.style.top = ty + 'px';
+    };
+    const hideTip2 = () => document.getElementById('chartTooltip').classList.remove('visible');
+    wrapEl.addEventListener('mousemove', e => showTip2(e.clientX, e.clientY));
+    wrapEl.addEventListener('mouseleave', hideTip2);
+    wrapEl.addEventListener('click', e => showTip2(e.clientX, e.clientY));
+    wrapEl.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; showTip2(t.clientX, t.clientY); }, {passive:false});
+    wrapEl.addEventListener('touchmove', e => { e.preventDefault(); const t = e.touches[0]; showTip2(t.clientX, t.clientY); }, {passive:false});
+    wrapEl.addEventListener('touchend', () => setTimeout(() => document.getElementById('chartTooltip').classList.remove('visible'), 2000));
+  }
+}
+
+// Re-draw chart on resize
+window.addEventListener('resize', () => { if (document.getElementById('screen-dashboard').classList.contains('active')) drawChart(); });
+
+// ══════════════════════════════════════════════
+// FACTURAS LIST
+// ══════════════════════════════════════════════
+function renderFacturas() {
+  const years = ['todos', ...getYears()];
+  const filters = document.getElementById('filterRow');
+  filters.innerHTML = years.map(y => `<button class="filter-chip ${filterYear==y?'active':''}" onclick="setFilterYear('${y}')">${y === 'todos' ? 'Todos los años' : y}</button>`).join('')
+    + ['todos','T1','T2','T3','T4'].map(t => `<button class="filter-chip ${filterTrim==t?'active':''}" onclick="setFilterTrim('${t}')">${t === 'todos' ? 'Todos los trim.' : t}</button>`).join('');
+  
+  let fs = [...DB.facturas];
+  if (filterYear !== 'todos') fs = fs.filter(f => (f.Ano || getAno(f.Fecha)) == filterYear);
+  if (filterTrim !== 'todos') fs = fs.filter(f => (f.Trimestre || getTrim(f.Fecha)) === filterTrim);
+  if (searchTerm) {
+    const s = searchTerm.toLowerCase();
+    fs = fs.filter(f => String(f.NoFactura).toLowerCase().includes(s) || (f.Cliente||'').toLowerCase().includes(s) || (f.Concepto||'').toLowerCase().includes(s));
+  }
+  
+  fs.sort((a,b) => (b.Fecha||'').localeCompare(a.Fecha||''));
+  
+  const list = document.getElementById('factList');
+  if (!fs.length) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">📄</div><div class="empty-text">No se encontraron facturas</div></div>';
+    return;
+  }
+  list.innerHTML = fs.map((f, i) => {
+    const idx = DB.facturas.indexOf(f);
+    return `<div class="fact-card" onclick="openDetail(${idx})">
+      <div class="fact-header">
+        <span class="fact-num">${f.NoFactura}</span>
+        <span class="fact-date">${fmtDate(f.Fecha)}</span>
+      </div>
+      <div class="fact-cliente">${f.Cliente}</div>
+      <div class="fact-concepto">${(parseConcepto(f.Concepto)[0]?.desc || (f.Concepto||'').split('\n')[0].split('|')[0] || '').substring(0,70)}</div>
+      <div class="fact-footer">
+        <div>
+          <div class="fact-base">Base: ${eur(f.BaseImponible)}</div>
+          <span class="fact-trim">${f.Trimestre||getTrim(f.Fecha)} · ${f.Mes||getMes(f.Fecha)}</span>
+        </div>
+        <div style="text-align:right">
+          <div class="fact-neto">${eur(f.Total)}</div>
+          <span class="fact-estado">${f.Estado||'Emitida'}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setFilterYear(y) { filterYear = y; renderFacturas(); }
+function setFilterTrim(t) { filterTrim = t; renderFacturas(); }
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchTerm = e.target.value;
+  renderFacturas();
+});
+
+// ══════════════════════════════════════════════
+// CONCEPTO PARSER  desc|qty|price|total;desc|qty|price|total
+// ══════════════════════════════════════════════
+function parseConcepto(conceptoStr) {
+  if (!conceptoStr) return [];
+  // Split by ; first (multiple lines), then each line by |
+  // Lines can also be separated by \n before the | pattern
+  const raw = conceptoStr;
+  const lines = [];
+
+  // Split on ; separating pipe-groups
+  const segments = raw.split(/;(?=\s*[^|]*\|)/);
+  segments.forEach(seg => {
+    seg = seg.trim();
+    if (!seg) return;
+    // Check if this segment has pipe characters (structured data)
+    const parts = seg.split('|');
+    if (parts.length >= 2) {
+      // parts: [desc, qty, precio, importe] or [desc, qty, importe] etc
+      const desc = parts[0].trim().replace(/\n/g, ' ').replace(/\s+/g, ' ');
+      const qty  = parts[1] ? parts[1].replace(',','.').trim() : '';
+      const precio = parts[2] ? parts[2].replace(',','.').trim() : '';
+      const importe = parts[3] ? parts[3].replace(',','.').trim() : (parts[2] || '');
+      // Only add if there's a description or importe
+      if (desc || importe) {
+        lines.push({ desc, qty, precio, importe });
+      }
+    } else {
+      // Free text segment — add as description-only row
+      const text = seg.replace(/\n/g, ' ').trim();
+      if (text) lines.push({ desc: text, qty: '', precio: '', importe: '' });
+    }
+  });
+
+  // Also handle \n-only separated lines that don't have the ; separator
+  if (lines.length === 0 && raw.includes('|')) {
+    const fallback = raw.split('\n');
+    fallback.forEach(line => {
+      line = line.trim();
+      if (!line) return;
+      const parts = line.split('|');
+      if (parts.length >= 2) {
+        lines.push({
+          desc: parts[0].trim(),
+          qty: parts[1] ? parts[1].replace(',','.').trim() : '',
+          precio: parts[2] ? parts[2].replace(',','.').trim() : '',
+          importe: parts[3] ? parts[3].replace(',','.').trim() : (parts[2]||'')
+        });
+      } else if (line) {
+        lines.push({ desc: line, qty: '', precio: '', importe: '' });
+      }
+    });
+  }
+
+  return lines;
+}
+
+function renderConceptoLines(conceptoStr) {
+  const lines = parseConcepto(conceptoStr);
+  if (!lines.length) return `<div class="concepto-block">${conceptoStr||'—'}</div>`;
+
+  // Check if any line has numeric data
+  const hasNumbers = lines.some(l => l.qty || l.precio || l.importe);
+
+  if (!hasNumbers) {
+    // Pure text
+    return `<div class="concepto-block">${lines.map(l=>l.desc).join('\n')}</div>`;
+  }
+
+  return `<table class="concepto-lines">
+    <thead><tr>
+      <th>Descripción</th>
+      ${hasNumbers ? '<th class="num">Cant.</th><th class="num">€/ud.</th>' : ''}
+      <th class="num">Importe</th>
+    </tr></thead>
+    <tbody>
+      ${lines.map(l => `<tr>
+        <td class="concepto-desc">${l.desc||'—'}</td>
+        ${hasNumbers ? `<td class="num">${l.qty||'—'}</td><td class="num">${l.precio ? eur(parseFloat(l.precio)) : '—'}</td>` : ''}
+        <td class="num">${l.importe ? eur(parseFloat(l.importe)) : '—'}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+// ══════════════════════════════════════════════
+// DETAIL MODAL
+// ══════════════════════════════════════════════
+function openDetail(idx) {
+  const f = DB.facturas[idx];
+  const ret = abs(f.RetencionEUR);
+  const retPct = Math.round(Math.abs(f.RetencionPct || 0.15) * 100);
+  document.getElementById('detailContent').innerHTML = `
+    <div class="modal-handle"></div>
+    <div class="modal-title">${f.NoFactura}</div>
+    <div class="modal-subtitle">${f.Cliente}</div>
+    <div class="detail-row"><span class="detail-key">NIF</span><span class="detail-val">${f.NIF||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Fecha</span><span class="detail-val">${fmtDate(f.Fecha)}</span></div>
+    <div class="detail-row"><span class="detail-key">Vencimiento</span><span class="detail-val">${fmtDate(f.Vencimiento)}</span></div>
+    <div class="detail-row"><span class="detail-key">Trimestre</span><span class="detail-val">${f.Trimestre||getTrim(f.Fecha)} · ${f.Ano||getAno(f.Fecha)}</span></div>
+    <div class="detail-row"><span class="detail-key">Estado</span><span class="detail-val">${f.Estado||'Emitida'}</span></div>
+    <div style="font-size:11px;color:var(--muted);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.07em;">Conceptos</div>
+    ${renderConceptoLines(f.Concepto)}
+    <div class="totals-block">
+      <div class="total-row"><span>Base imponible</span><span class="val">${eur(f.BaseImponible)}</span></div>
+      <div class="total-row"><span>IVA (0% exento)</span><span class="val">0,00 €</span></div>
+      <div class="total-row"><span>Retención IRPF (${retPct}%)</span><span class="val">− ${eur(ret)}</span></div>
+      <div class="total-row main"><span>TOTAL A COBRAR</span><span class="val">${eur(f.Total)}</span></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="editFactura(${idx})">✏️ Editar</button>
+      <button class="btn btn-primary" onclick="exportPDF(${idx})">📄 PDF</button>
+      <button class="btn btn-secondary" style="background:rgba(124,106,247,.15);color:#a89cf7;border:1px solid rgba(124,106,247,.3)" onclick="emailFactura(${idx})">✉️ Email</button>
+      <button class="btn btn-danger" onclick="deleteFactura(${idx})">🗑</button>
+    </div>
+  `;
+  document.getElementById('detailModal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('detailModal').classList.remove('open'); }
+function closeClienteModal() { document.getElementById('clienteModal').classList.remove('open'); }
+
+// ══════════════════════════════════════════════
+// PDF EXPORT — compatible iPhone Safari
+// ══════════════════════════════════════════════
+function exportPDF(idx) {
+  const f = DB.facturas[idx];
+  const ret = abs(f.RetencionEUR);
+  const retPct = Math.round(Math.abs(f.RetencionPct || 0.15) * 100);
+  const cliente = DB.clientes.find(c => c.NombreCliente === f.Cliente) || {};
+
+  const fmtShort = d => {
+    if (!d) return '—';
+    const [y,m,day] = d.substring(0,10).split('-');
+    return `${parseInt(day)}/${parseInt(m)}/${y}`;
+  };
+  const fmtVenc = d => {
+    if (!d || d === '1970-01-01') return '—';
+    const [y,m,day] = d.substring(0,10).split('-');
+    return `${parseInt(day)}/${parseInt(m)}/${String(y).slice(2)}`;
+  };
+
+  const lines = parseConcepto(f.Concepto);
+  const hasNumbers = lines.some(l => l.qty || l.precio || l.importe);
+  const MIN_ROWS = 4;
+  const rows = [...lines];
+  while (rows.length < MIN_ROWS) rows.push({ desc: '', qty: '', precio: '', importe: '' });
+
+  const conceptoRows = rows.map(l => {
+    const impNum = l.importe ? parseFloat(l.importe.replace(',','.')) : null;
+    const precNum = l.precio ? parseFloat(l.precio.replace(',','.')) : null;
+    return `<tr>
+      <td class="c-desc">${l.desc || ''}</td>
+      <td class="c-num">${l.qty || ''}</td>
+      <td class="c-num">${precNum != null && !isNaN(precNum) ? eur(precNum) : (l.desc ? '' : ' ')}</td>
+      <td class="c-num">${impNum != null && !isNaN(impNum) ? eur(impNum) : (l.desc ? '' : ' - €')}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Factura ${f.NoFactura}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; padding: 28px 36px 24px; max-width: 700px; margin: 0 auto; }
+  .header-wrap { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+  .emisor-block { font-size: 11px; line-height: 1.65; }
+  .emisor-block .name { font-size: 12px; font-weight: 700; }
+  .factura-title { font-size: 26px; font-weight: 900; letter-spacing: .04em; color: #1a1a1a; text-align: right; line-height: 1; }
+  .factura-contact { text-align: right; font-size: 10px; color: #555; margin-top: 6px; }
+  .divider { border: none; border-top: 1.5px solid #000; margin: 14px 0; }
+  .divider-light { border: none; border-top: 1px solid #bbb; margin: 6px 0; }
+  .meta-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 11px; }
+  .meta-label { color: #555; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+  .meta-val { font-weight: 600; font-size: 12px; }
+  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; font-size: 11px; line-height: 1.7; }
+  .party-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #888; border-bottom: 1px solid #ccc; padding-bottom: 3px; margin-bottom: 6px; }
+  .party-name { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
+  .nif-line { font-size: 10px; color: #333; }
+  .fact-info-box { border: 1.5px solid #000; border-radius: 2px; padding: 10px 14px; font-size: 11px; line-height: 1.9; }
+  .fact-info-row { display: flex; justify-content: space-between; }
+  .fact-info-row .lbl { color: #555; }
+  .fact-info-row .val { font-weight: 700; }
+  .concepto-table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 11px; }
+  .concepto-table thead tr { background: #1a1a1a; color: #fff; }
+  .concepto-table thead th { padding: 7px 8px; text-align: left; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .concepto-table thead th.c-num { text-align: right; }
+  .concepto-table tbody td { padding: 7px 8px; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
+  .concepto-table tbody tr:last-child td { border-bottom: 2px solid #aaa; }
+  .c-desc { text-align: left; width: 52%; }
+  .c-num { text-align: right; white-space: nowrap; }
+  .totals-wrap { display: flex; justify-content: flex-end; margin-top: 0; }
+  .totals-table { width: 260px; border-collapse: collapse; font-size: 11px; }
+  .totals-table td { padding: 5px 8px; border-bottom: 1px solid #e0e0e0; }
+  .totals-table td:last-child { text-align: right; font-weight: 600; font-family: 'Courier New', monospace; }
+  .totals-table .total-main td { background: #1a1a1a; color: #fff; font-weight: 700; font-size: 13px; border-bottom: none; padding: 8px; }
+  .totals-table .total-main td:last-child { font-family: 'Courier New', monospace; }
+  .footer-box { margin-top: 20px; border: 1px solid #bbb; border-radius: 2px; padding: 10px 14px; font-size: 10.5px; line-height: 1.7; color: #333; }
+  .footer-box .payment-title { font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #000; margin-bottom: 4px; }
+  .iban { font-family: 'Courier New', monospace; font-weight: 700; font-size: 12px; letter-spacing: .03em; }
+  .iva-note { margin-top: 12px; font-size: 9.5px; color: #666; font-style: italic; border-top: 1px solid #ddd; padding-top: 8px; line-height: 1.5; }
+  /* Print button — solo visible en pantalla, no imprime */
+  .print-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #1a1a1a; padding: 12px 20px; display: flex; gap: 10px; justify-content: center; }
+  .print-bar button { padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 700; border: none; cursor: pointer; font-family: Arial, sans-serif; }
+  .btn-print { background: #00d4a1; color: #000; }
+  .btn-back  { background: rgba(255,255,255,.1); color: #fff; }
+  body { padding-bottom: 70px; }
+  @media print {
+    .print-bar { display: none !important; }
+    body { padding: 16px 24px 16px; }
+    @page { size: A4; margin: 10mm 12mm; }
+  }
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <button class="btn-back" onclick="history.back()">← Volver</button>
+  <button class="btn-print" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+</div>
+
+<div class="header-wrap">
+  <div class="emisor-block">
+    <div class="name">${EMISOR.nombre}</div>
+    <div>${EMISOR.direccion.split(',')[0]}</div>
+    <div>${EMISOR.direccion.split(',').slice(1).join(',').trim()}</div>
+    <div>NIF: ${EMISOR.nif}</div>
+  </div>
+  <div>
+    <div class="factura-title">FACTURA</div>
+    <div class="factura-contact">${EMISOR.contacto}</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<div class="meta-row">
+  <div><div class="meta-label">Número de factura</div><div class="meta-val">${f.NoFactura}</div></div>
+  <div style="text-align:right"><div class="meta-label">Fecha</div><div class="meta-val">${fmtShort(f.Fecha)}</div></div>
+</div>
+
+<div class="parties">
+  <div>
+    <div class="party-label">Facturar a</div>
+    <div class="party-name">${f.Cliente}</div>
+    <div class="nif-line">${f.NIF || cliente.NIF || '—'}</div>
+    ${cliente.Direccion ? `<div>${cliente.Direccion}</div>` : ''}
+    <div>${(cliente.CPMunicipio||'')}${cliente.Provincia && cliente.CPMunicipio ? ', ' + cliente.Provincia : (cliente.Provincia||'')}</div>
+    ${cliente.Email ? `<div>${cliente.Email}</div>` : ''}
+  </div>
+  <div>
+    <div class="fact-info-box">
+      <div class="fact-info-row"><span class="lbl">Nº Factura:</span><span class="val">${f.NoFactura}</span></div>
+      <div class="fact-info-row"><span class="lbl">Fecha emisión:</span><span class="val">${fmtShort(f.Fecha)}</span></div>
+      <div class="fact-info-row"><span class="lbl">Vencimiento:</span><span class="val">${fmtVenc(f.Vencimiento)}</span></div>
+      <div class="fact-info-row"><span class="lbl">Trimestre:</span><span class="val">${f.Trimestre||getTrim(f.Fecha)} · ${f.Ano||getAno(f.Fecha)}</span></div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider-light">
+
+<table class="concepto-table">
+  <thead><tr>
+    <th class="c-desc">Concepto</th>
+    <th class="c-num">Cantidad</th>
+    <th class="c-num">Precio Unidad</th>
+    <th class="c-num">Base Imp.</th>
+  </tr></thead>
+  <tbody>${conceptoRows}</tbody>
+</table>
+
+<div class="totals-wrap">
+  <table class="totals-table">
+    <tr><td>Total B.I.:</td><td>${eur(f.BaseImponible)}</td></tr>
+    <tr><td>IVA 0%:</td><td> - €</td></tr>
+    <tr><td>Retención ${retPct}%:</td><td>- ${eur(ret)}</td></tr>
+    <tr class="total-main"><td>TOTAL:</td><td>${eur(f.Total)}</td></tr>
+  </table>
+</div>
+
+<div class="footer-box">
+  <div class="payment-title">Forma de pago:</div>
+  <div>Fecha de vencimiento: <strong>${fmtVenc(f.Vencimiento)}</strong></div>
+  <div>El pago se realizará a la presentación de esta factura mediante ingreso en cuenta:</div>
+  <div class="iban">${EMISOR.cuenta}</div>
+  <div class="iva-note">*La formación profesional está exenta del impuesto sobre el valor añadido (artículo 20.9a de la Ley 37/1992, del 28 de diciembre, del Impuesto sobre el Valor Añadido).</div>
+</div>
+
+</body>
+</html>`;
+
+  // iOS Safari compatible: navigate current tab to blob URL
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  window.location.href = url;
+}
+
+// ══════════════════════════════════════════════
+// EMAIL — genera PDF descargable + abre correo
+// ══════════════════════════════════════════════
+let _emailData = {}; // store current email data globally to avoid inline string escaping issues
+
+function emailFactura(idx) {
+  const f = DB.facturas[idx];
+  const cliente = DB.clientes.find(c => c.NombreCliente === f.Cliente) || {};
+  const email = cliente.Email || '';
+
+  // Primera descripción limpia
+  const lines = parseConcepto(f.Concepto);
+  const firstDesc = lines.length
+    ? lines[0].desc
+    : (f.Concepto || '').split('|')[0].split('\n')[0].trim();
+
+  // Fecha dentro del concepto o fecha de factura
+  const dateMatch = (f.Concepto || '').match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+  let cursoFecha = '';
+  if (dateMatch) {
+    cursoFecha = dateMatch[0];
+  } else if (f.Fecha) {
+    const d = new Date(f.Fecha);
+    cursoFecha = d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  // Store globally — avoids any escaping issues in onclick
+  _emailData = {
+    idx,
+    email,
+    subject: 'Factura ' + f.NoFactura + ' — ' + f.Cliente,
+    body: 'Buenos días,\n\nAdjunto factura (' + f.NoFactura + ') del curso (' + firstDesc + ') realizado el pasado (' + cursoFecha + ').\n\nEspero que esté todo correcto.\n\nMuchas gracias.\nUn saludo,\n\n' + EMISOR.nombre + '\n' + EMISOR.contacto,
+    fileName: 'Factura_' + f.NoFactura.replace(/[^a-zA-Z0-9-]/g,'_') + '.pdf'
+  };
+
+  const emailDisplay = email
+    ? '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Para: <span style="color:var(--text)">' + email + '</span></div>'
+    : '<div style="font-size:11px;color:var(--warn);margin-bottom:8px;">⚠️ Este cliente no tiene email guardado</div>';
+
+  document.getElementById('emailModalContent').innerHTML =
+    '<div class="modal-handle"></div>' +
+    '<div style="font-size:16px;font-weight:700;margin-bottom:6px;">✉️ Enviar factura por email</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:20px;">Sigue estos dos pasos:</div>' +
+
+    '<div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">' +
+
+      // Step 1
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start;">' +
+        '<div style="background:var(--accent);color:#000;font-weight:700;font-size:13px;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>' +
+        '<div style="flex:1">' +
+          '<div style="font-weight:600;font-size:14px;margin-bottom:4px;">Descarga el PDF</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Archivo: <span style="font-family:var(--mono);color:var(--text);font-size:11px;">' + _emailData.fileName + '</span></div>' +
+          '<button class="btn btn-primary" id="pdfBtn" style="padding:10px 18px;font-size:13px;width:100%;" onclick="emailStep1()">📥 Generar y guardar PDF</button>' +
+        '</div>' +
+      '</div>' +
+
+      // Step 2
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start;">' +
+        '<div style="background:var(--accent2);color:#fff;font-weight:700;font-size:13px;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>' +
+        '<div style="flex:1">' +
+          '<div style="font-weight:600;font-size:14px;margin-bottom:4px;">Abre el correo</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">El asunto y el texto ya están escritos. Solo adjunta el PDF del paso 1.</div>' +
+          emailDisplay +
+          '<button class="btn" style="background:rgba(124,106,247,.15);color:#a89cf7;border:1px solid rgba(124,106,247,.3);padding:10px 18px;font-size:13px;width:100%;" onclick="emailStep2()">✉️ Abrir Mail con el texto</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div style="background:rgba(0,212,161,.06);border:1px solid rgba(0,212,161,.2);border-radius:10px;padding:12px;font-size:11px;color:var(--muted);line-height:1.6;">' +
+      '💡 <strong style="color:var(--text)">En iPhone:</strong> al abrir Mail, toca el cuerpo del correo → mantén pulsado → <em>"Adjuntar archivo"</em> → busca el PDF en Archivos Recientes.' +
+    '</div>' +
+
+    '<button class="btn btn-secondary" style="width:100%;margin-top:14px;" onclick="closeEmailModal()">Cerrar</button>';
+
+  document.getElementById('emailModal').classList.add('open');
+}
+
+function emailStep1() {
+  exportPDF(_emailData.idx);
+  const btn = document.getElementById('pdfBtn');
+  if (btn) {
+    btn.textContent = '✅ PDF generado — guárdalo en Archivos';
+    btn.style.background = 'rgba(0,212,161,.2)';
+    btn.style.color = 'var(--accent)';
+    btn.style.border = '1px solid rgba(0,212,161,.3)';
+    btn.disabled = true;
+  }
+}
+
+function emailStep2() {
+  const mailto = 'mailto:' + _emailData.email
+    + '?subject=' + encodeURIComponent(_emailData.subject)
+    + '&body=' + encodeURIComponent(_emailData.body);
+  window.location.href = mailto;
+}
+
+function closeEmailModal() {
+  document.getElementById('emailModal').classList.remove('open');
+}
+
+// ══════════════════════════════════════════════
+// DELETE FACTURA
+// ══════════════════════════════════════════════
+function deleteFactura(idx) {
+  if (confirm(`¿Eliminar factura ${DB.facturas[idx].NoFactura}?`)) {
+    DB.facturas.splice(idx, 1);
+    saveData();
+    closeModal();
+    renderFacturas();
+    renderDashboard();
+  }
+}
+
+// ══════════════════════════════════════════════
+// EDIT FACTURA
+// ══════════════════════════════════════════════
+function editFactura(idx) {
+  closeModal();
+  editType = 'factura';
+  editTarget = idx;
+  const f = DB.facturas[idx];
+  document.getElementById('editTitle').textContent = `Editar ${f.NoFactura}`;
+  document.getElementById('editPanel').innerHTML = buildFacturaForm(f);
+  document.getElementById('editOverlay').classList.add('open');
+  bindClienteAutocomplete('editCliente', 'editNIF');
+}
+
+function buildFacturaForm(f, isNew = false) {
+  const clientesOpts = DB.clientes.map(c => `<option value="${c.NombreCliente}">${c.NombreCliente}</option>`).join('');
+  return `
+    <div class="form-section">
+      <div class="form-section-title">Datos de la factura</div>
+      <div class="form-field"><label class="form-label">Nº Factura</label><input class="form-input" id="editNumFac" value="${f.NoFactura||''}"></div>
+      <div class="form-field"><label class="form-label">Fecha</label><input class="form-input" type="date" id="editFecha" value="${(f.Fecha||'').substring(0,10)}"></div>
+      <div class="form-field"><label class="form-label">Vencimiento</label><input class="form-input" type="date" id="editVenc" value="${(f.Vencimiento||'').substring(0,10)}"></div>
+      <div class="form-field"><label class="form-label">Retención IRPF (%)</label><input class="form-input" type="number" id="editRet" value="${Math.round(Math.abs((f.RetencionPct||0.15))*100)}" step="1" min="0" max="25"></div>
+    </div>
+    <div class="form-section">
+      <div class="form-section-title">Cliente</div>
+      <div class="form-field"><label class="form-label">Nombre *</label>
+        <input class="form-input" id="editCliente" list="clienteList_dl" value="${f.Cliente||''}" oninput="autofillClienteNIF('editCliente','editNIF')">
+        <datalist id="clienteList_dl">${clientesOpts}</datalist>
+      </div>
+      <div class="form-field"><label class="form-label">NIF</label><input class="form-input" id="editNIF" value="${f.NIF||''}"></div>
+    </div>
+    <div class="form-section">
+      <div class="form-section-title">Concepto</div>
+      <div class="form-field"><label class="form-label">Descripción completa</label><textarea class="form-textarea" id="editConcepto" rows="5">${f.Concepto||''}</textarea></div>
+      <div class="form-field"><label class="form-label">Base imponible (€)</label><input class="form-input" type="number" id="editBase" value="${f.BaseImponible||0}" step="0.01" oninput="recalcEdit()"></div>
+    </div>
+    <div class="form-section">
+      <div class="form-section-title">Resumen</div>
+      <div class="totals-preview" id="editTotals"></div>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Estado</label>
+      <select class="form-select" id="editEstado">
+        <option value="Emitida" ${(f.Estado||'Emitida')==='Emitida'?'selected':''}>Emitida</option>
+        <option value="Cobrada" ${f.Estado==='Cobrada'?'selected':''}>Cobrada</option>
+        <option value="Pendiente" ${f.Estado==='Pendiente'?'selected':''}>Pendiente</option>
+        <option value="Cancelada" ${f.Estado==='Cancelada'?'selected':''}>Cancelada</option>
+      </select>
+    </div>
+  `;
+  setTimeout(recalcEdit, 50);
+}
+
+function recalcEdit() {
+  const base = parseFloat(document.getElementById('editBase')?.value) || 0;
+  const retPct = parseFloat(document.getElementById('editRet')?.value) || 15;
+  const ret = base * (retPct / 100);
+  const total = base - ret;
+  const el = document.getElementById('editTotals');
+  if (el) el.innerHTML = `
+    <div class="total-row"><span>Base imponible</span><span class="val">${eur(base)}</span></div>
+    <div class="total-row"><span>IVA (0%)</span><span class="val">0,00 €</span></div>
+    <div class="total-row"><span>Retención ${retPct}%</span><span class="val">− ${eur(ret)}</span></div>
+    <div class="total-row main"><span>TOTAL</span><span class="val">${eur(total)}</span></div>
+  `;
+}
+
+function autofillClienteNIF(nameId, nifId) {
+  const name = document.getElementById(nameId)?.value;
+  const c = DB.clientes.find(cl => cl.NombreCliente.toLowerCase() === (name||'').toLowerCase());
+  if (c) { const n = document.getElementById(nifId); if (n) n.value = c.NIF || ''; }
+}
+
+function saveEdit() {
+  if (editType === 'factura') {
+    const base = parseFloat(document.getElementById('editBase').value) || 0;
+    const retPct = parseFloat(document.getElementById('editRet').value) || 15;
+    const ret = base * (retPct / 100);
+    const fecha = document.getElementById('editFecha').value;
+    const f = DB.facturas[editTarget];
+    f.NoFactura = document.getElementById('editNumFac').value;
+    f.Fecha = fecha;
+    f.Vencimiento = document.getElementById('editVenc').value;
+    f.Cliente = document.getElementById('editCliente').value;
+    f.NIF = document.getElementById('editNIF').value;
+    f.Concepto = document.getElementById('editConcepto').value;
+    f.BaseImponible = base;
+    f.RetencionPct = retPct / 100;
+    f.RetencionEUR = -ret;
+    f.Total = base - ret;
+    f.IVA = 0;
+    f.Estado = document.getElementById('editEstado').value;
+    f.Mes = getMes(fecha);
+    f.Trimestre = getTrim(fecha);
+    f.Ano = getAno(fecha);
+    saveData();
+    closeEdit();
+    renderFacturas();
+    renderDashboard();
+  } else if (editType === 'cliente') {
+    const c = DB.clientes[editTarget];
+    c.NombreCliente = document.getElementById('cNombre').value;
+    c.NIF = document.getElementById('cNIF').value;
+    c.Direccion = document.getElementById('cDireccion').value;
+    c.CPMunicipio = document.getElementById('cCP').value;
+    c.Provincia = document.getElementById('cProvincia').value;
+    c.Telefono = document.getElementById('cTel').value;
+    c.Email = document.getElementById('cEmail').value;
+    saveData();
+    closeEdit();
+    renderClientes();
+  } else if (editType === 'nuevoCliente') {
+    const codigo = 'C-' + String(DB.clientes.length + 1).padStart(3, '0');
+    DB.clientes.push({
+      Codigo: codigo,
+      NombreCliente: document.getElementById('cNombre').value,
+      NIF: document.getElementById('cNIF').value,
+      Direccion: document.getElementById('cDireccion').value,
+      CPMunicipio: document.getElementById('cCP').value,
+      Provincia: document.getElementById('cProvincia').value,
+      Pais: 'España',
+      Telefono: document.getElementById('cTel').value,
+      Email: document.getElementById('cEmail').value,
+      Web: null
+    });
+    saveData();
+    closeEdit();
+    renderClientes();
+  }
+}
+
+function closeEdit() { document.getElementById('editOverlay').classList.remove('open'); }
+
+// ══════════════════════════════════════════════
+// NUEVA FACTURA
+// ══════════════════════════════════════════════
+function renderNueva() {
+  nuevaConceptos = [{desc:'', qty:'1', precio:'', base:''}];
+  const year = new Date().getFullYear();
+  const nextNum = nextInvoiceNum(year);
+  const today = new Date().toISOString().substring(0,10);
+  const venc = new Date(Date.now() + 30*24*60*60*1000).toISOString().substring(0,10);
+  const clientesOpts = DB.clientes.map(c => `<option value="${c.NombreCliente}">${c.NombreCliente}</option>`).join('');
+  
+  document.getElementById('nuevaFormWrap').innerHTML = `
+    <div style="font-size:18px;font-weight:700;margin-bottom:16px;">Nueva Factura</div>
+    <div class="form-section">
+      <div class="form-section-title">Emisor</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px;color:var(--muted);line-height:1.8;">
+        <b style="color:var(--text)">${EMISOR.nombre}</b><br>
+        ${EMISOR.nif} · ${EMISOR.contacto}
+      </div>
+    </div>
+    <div class="form-section">
+      <div class="form-section-title">Factura</div>
+      <div class="form-field"><label class="form-label">Nº Factura</label><input class="form-input" id="nNumFac" value="${nextNum}"></div>
+      <div class="form-field"><label class="form-label">Fecha *</label><input class="form-input" type="date" id="nFecha" value="${today}" oninput="recalcNueva()"></div>
+      <div class="form-field"><label class="form-label">Vencimiento</label><input class="form-input" type="date" id="nVenc" value="${venc}"></div>
+      <div class="form-field"><label class="form-label">Retención IRPF (%)</label><input class="form-input" type="number" id="nRet" value="15" step="1" min="0" max="25" oninput="recalcNueva()"></div>
+    </div>
+    <div class="form-section">
+      <div class="form-section-title">Cliente</div>
+      <div class="form-field"><label class="form-label">Nombre *</label>
+        <input class="form-input" id="nCliente" list="nClienteDL" placeholder="Selecciona o escribe…" oninput="autofillClienteNIF('nCliente','nNIF')">
+        <datalist id="nClienteDL">${clientesOpts}</datalist>
+      </div>
+      <div class="form-field"><label class="form-label">NIF</label><input class="form-input" id="nNIF" placeholder="Autocompletado desde clientes"></div>
+    </div>
+    <div class="form-section">
+      <div class="form-section-title">Conceptos</div>
+      <div class="conceptos-list" id="conceptosList"></div>
+      <button class="add-row-btn" onclick="addConcepto()">+ Añadir línea</button>
+    </div>
+    <div class="form-section">
+      <div class="totals-preview" id="nuevaTotals"></div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="guardarNueva()">💾 Guardar Factura</button>
+  `;
+  renderConceptos();
+}
+
+function renderConceptos() {
+  const list = document.getElementById('conceptosList');
+  if (!list) return;
+  list.innerHTML = nuevaConceptos.map((c, i) => `
+    <div class="concepto-row">
+      ${nuevaConceptos.length > 1 ? `<button class="concepto-del" onclick="delConcepto(${i})">✕</button>` : ''}
+      <div class="form-field"><label class="form-label">Descripción</label><input class="form-input" value="${c.desc}" oninput="updConcepto(${i},'desc',this.value)"></div>
+      <div class="row-grid">
+        <div class="form-field"><label class="form-label">Cantidad</label><input class="form-input" type="number" value="${c.qty}" min="0" step="0.5" oninput="updConcepto(${i},'qty',this.value)"></div>
+        <div class="form-field"><label class="form-label">Precio</label><input class="form-input" type="number" value="${c.precio}" min="0" step="0.01" oninput="updConcepto(${i},'precio',this.value)"></div>
+        <div class="form-field"><label class="form-label">Total</label><input class="form-input" value="${c.base}" oninput="updConcepto(${i},'base',this.value)"></div>
+      </div>
+    </div>
+  `).join('');
+  recalcNueva();
+}
+
+function updConcepto(i, field, val) {
+  nuevaConceptos[i][field] = val;
+  if (field === 'qty' || field === 'precio') {
+    const q = parseFloat(nuevaConceptos[i].qty) || 0;
+    const p = parseFloat(nuevaConceptos[i].precio) || 0;
+    if (q && p) {
+      nuevaConceptos[i].base = (q * p).toFixed(2);
+      const bases = document.querySelectorAll('.concepto-row .row-grid input:last-child');
+      if (bases[i]) bases[i].value = nuevaConceptos[i].base;
+    }
+  }
+  recalcNueva();
+}
+
+function addConcepto() { nuevaConceptos.push({desc:'',qty:'1',precio:'',base:''}); renderConceptos(); }
+function delConcepto(i) { nuevaConceptos.splice(i, 1); renderConceptos(); }
+
+function recalcNueva() {
+  const base = nuevaConceptos.reduce((s, c) => s + (parseFloat(c.base) || 0), 0);
+  const retPct = parseFloat(document.getElementById('nRet')?.value) || 15;
+  const ret = base * (retPct / 100);
+  const total = base - ret;
+  const el = document.getElementById('nuevaTotals');
+  if (el) el.innerHTML = `
+    <div class="total-row"><span>Base imponible</span><span class="val">${eur(base)}</span></div>
+    <div class="total-row"><span>IVA (0% exento)</span><span class="val">0,00 €</span></div>
+    <div class="total-row"><span>Retención ${retPct}%</span><span class="val">− ${eur(ret)}</span></div>
+    <div class="total-row main"><span>TOTAL A COBRAR</span><span class="val">${eur(total)}</span></div>
+  `;
+}
+
+function guardarNueva() {
+  const cliente = document.getElementById('nCliente').value.trim();
+  const fecha = document.getElementById('nFecha').value;
+  if (!cliente || !fecha) { alert('Rellena al menos cliente y fecha'); return; }
+  
+  const base = nuevaConceptos.reduce((s, c) => s + (parseFloat(c.base)||0), 0);
+  const retPct = parseFloat(document.getElementById('nRet').value) || 15;
+  const ret = base * (retPct / 100);
+  
+  const conceptoStr = nuevaConceptos.filter(c => c.desc || c.base).map(c => {
+    const parts = [c.desc, c.qty, c.precio, c.base].filter(Boolean);
+    return parts.join('|');
+  }).join(';');
+  
+  const nf = {
+    NoFactura: document.getElementById('nNumFac').value,
+    Fecha: fecha,
+    Vencimiento: document.getElementById('nVenc').value,
+    Trimestre: getTrim(fecha),
+    Ano: getAno(fecha),
+    Mes: getMes(fecha),
+    Cliente: cliente,
+    NIF: document.getElementById('nNIF').value,
+    Concepto: conceptoStr,
+    Horas: null,
+    PrecioHora: null,
+    BaseImponible: base,
+    IVA: 0,
+    RetencionPct: retPct / 100,
+    RetencionEUR: -ret,
+    Total: base - ret,
+    Estado: 'Emitida'
+  };
+  
+  DB.facturas.unshift(nf);
+  saveData();
+  alert(`Factura ${nf.NoFactura} guardada ✓`);
+  renderNueva();
+  renderDashboard();
+}
+
+// ══════════════════════════════════════════════
+// CLIENTES
+// ══════════════════════════════════════════════
+function renderClientes() {
+  const search = (document.getElementById('clienteSearch')?.value || '').toLowerCase();
+  let cs = DB.clientes.filter(c => !search || (c.NombreCliente||'').toLowerCase().includes(search) || (c.NIF||'').toLowerCase().includes(search));
+  cs.sort((a,b) => (a.NombreCliente||'').localeCompare(b.NombreCliente||''));
+  
+  const list = document.getElementById('clienteList');
+  list.innerHTML = `<button style="width:100%;margin-bottom:12px;" class="btn btn-primary" onclick="nuevoCliente()">+ Nuevo cliente</button>` +
+    cs.map(c => {
+      const idx = DB.clientes.indexOf(c);
+      const factCount = DB.facturas.filter(f => f.Cliente === c.NombreCliente).length;
+      return `<div class="cliente-card" onclick="openCliente(${idx})">
+        <div class="cliente-name">${c.NombreCliente}</div>
+        <div class="cliente-nif">${c.NIF||'—'} · ${c.Codigo}</div>
+        <div class="cliente-meta">${c.CPMunicipio||''} · ${factCount} factura${factCount!==1?'s':''}</div>
+      </div>`;
+    }).join('');
+}
+
+document.getElementById('clienteSearch').addEventListener('input', renderClientes);
+
+function openCliente(idx) {
+  const c = DB.clientes[idx];
+  const facturas = DB.facturas.filter(f => f.Cliente === c.NombreCliente);
+  const total = facturas.reduce((s,f) => s + (f.BaseImponible||0), 0);
+  
+  document.getElementById('clienteModalContent').innerHTML = `
+    <div class="modal-handle"></div>
+    <div class="modal-title">${c.Codigo}</div>
+    <div class="modal-subtitle">${c.NombreCliente}</div>
+    <div class="detail-row"><span class="detail-key">NIF</span><span class="detail-val">${c.NIF||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Dirección</span><span class="detail-val">${c.Direccion||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">C.P. / Municipio</span><span class="detail-val">${c.CPMunicipio||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Provincia</span><span class="detail-val">${c.Provincia||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Teléfono</span><span class="detail-val">${c.Telefono||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Email</span><span class="detail-val">${c.Email||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Facturas totales</span><span class="detail-val">${facturas.length} · ${eur(total)}</span></div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeClienteModal();editCliente(${idx})">✏️ Editar</button>
+      <button class="btn btn-danger" onclick="deleteCliente(${idx})">🗑 Eliminar</button>
+    </div>
+  `;
+  document.getElementById('clienteModal').classList.add('open');
+}
+
+function editCliente(idx) {
+  editType = 'cliente';
+  editTarget = idx;
+  const c = DB.clientes[idx];
+  document.getElementById('editTitle').textContent = 'Editar cliente';
+  document.getElementById('editPanel').innerHTML = buildClienteForm(c);
+  document.getElementById('editOverlay').classList.add('open');
+}
+
+function nuevoCliente() {
+  editType = 'nuevoCliente';
+  editTarget = null;
+  document.getElementById('editTitle').textContent = 'Nuevo cliente';
+  document.getElementById('editPanel').innerHTML = buildClienteForm({});
+  document.getElementById('editOverlay').classList.add('open');
+}
+
+function buildClienteForm(c) {
+  return `
+    <div class="form-section">
+      <div class="form-section-title">Datos del cliente</div>
+      <div class="form-field"><label class="form-label">Nombre *</label><input class="form-input" id="cNombre" value="${c.NombreCliente||''}"></div>
+      <div class="form-field"><label class="form-label">NIF/CIF</label><input class="form-input" id="cNIF" value="${c.NIF||''}"></div>
+      <div class="form-field"><label class="form-label">Dirección</label><input class="form-input" id="cDireccion" value="${c.Direccion||''}"></div>
+      <div class="form-field"><label class="form-label">C.P. y Municipio</label><input class="form-input" id="cCP" value="${c.CPMunicipio||''}"></div>
+      <div class="form-field"><label class="form-label">Provincia</label><input class="form-input" id="cProvincia" value="${c.Provincia||''}"></div>
+      <div class="form-field"><label class="form-label">Teléfono</label><input class="form-input" type="tel" id="cTel" value="${c.Telefono||''}"></div>
+      <div class="form-field"><label class="form-label">Email</label><input class="form-input" type="email" id="cEmail" value="${c.Email||''}"></div>
+    </div>
+  `;
+}
+
+function deleteCliente(idx) {
+  const c = DB.clientes[idx];
+  const count = DB.facturas.filter(f => f.Cliente === c.NombreCliente).length;
+  const msg = count > 0 ? `Este cliente tiene ${count} facturas. ¿Seguro que quieres eliminarlo?` : `¿Eliminar cliente ${c.NombreCliente}?`;
+  if (confirm(msg)) {
+    DB.clientes.splice(idx, 1);
+    saveData();
+    closeClienteModal();
+    renderClientes();
+  }
+}
+
+// ══════════════════════════════════════════════
+// INFORMES
+// ══════════════════════════════════════════════
+function renderInformes() {
+  const years = getYears();
+  let html = `<div style="font-size:18px;font-weight:700;margin-bottom:16px;">Informes</div>`;
+  
+  // Global summary
+  const totalBase = DB.facturas.reduce((s,f) => s + (f.BaseImponible||0), 0);
+  const totalNeto = DB.facturas.reduce((s,f) => s + (f.Total||0), 0);
+  html += `<div class="informe-section">
+    <div class="informe-year">📊 Resumen total histórico</div>
+    <div class="trim-row"><span class="trim-row-label">Total facturado</span><div class="trim-data"><div class="base">${eur(totalBase)}</div><div class="neto">Neto: ${eur(totalNeto)}</div></div></div>
+    <div class="trim-row"><span class="trim-row-label">Total facturas</span><div class="trim-data"><div class="base">${DB.facturas.length}</div></div></div>
+    <div class="trim-row"><span class="trim-row-label">Clientes únicos</span><div class="trim-data"><div class="base">${new Set(DB.facturas.map(f=>f.Cliente)).size}</div></div></div>
+    <div class="trim-row"><span class="trim-row-label">Media/factura</span><div class="trim-data"><div class="base">${eur(DB.facturas.length > 0 ? totalBase/DB.facturas.length : 0)}</div></div></div>
+  </div>`;
+  
+  // By year
+  years.forEach(year => {
+    const trim = getTrimestralForYear(year);
+    const s = getStatsForYear(year);
+    html += `<div class="informe-section">
+      <div class="informe-year">📅 ${year} — ${s.count} facturas</div>
+      ${['T1','T2','T3','T4'].filter(t => trim[t].base > 0).map(t => `
+        <div class="trim-row">
+          <span class="trim-row-label">${t}</span>
+          <div class="trim-data">
+            <div class="base">${eur(trim[t].base)}</div>
+            <div class="neto">Neto: ${eur(trim[t].neto)} · ${trim[t].count} fact.</div>
+          </div>
+        </div>
+      `).join('')}
+      <div class="trim-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:10px;">
+        <span style="font-weight:600">TOTAL ${year}</span>
+        <div class="trim-data">
+          <div class="base" style="color:var(--accent)">${eur(s.base)}</div>
+          <div class="neto">Neto: ${eur(s.neto)} · Ret: ${eur(s.ret)}</div>
+        </div>
+      </div>
+    </div>`;
+  });
+  
+  // Top clients
+  const clientMap = {};
+  DB.facturas.forEach(f => {
+    if (!clientMap[f.Cliente]) clientMap[f.Cliente] = {base:0, count:0};
+    clientMap[f.Cliente].base += (f.BaseImponible||0);
+    clientMap[f.Cliente].count++;
+  });
+  const top = Object.entries(clientMap).sort((a,b) => b[1].base - a[1].base).slice(0, 10);
+  html += `<div class="informe-section">
+    <div class="informe-year">🏆 Top clientes (por facturación)</div>
+    ${top.map(([name, data], i) => `
+      <div class="trim-row">
+        <span class="trim-row-label">${i+1}. ${name.length > 22 ? name.substring(0,22)+'…' : name}</span>
+        <div class="trim-data">
+          <div class="base">${eur(data.base)}</div>
+          <div class="neto">${data.count} facturas</div>
+        </div>
+      </div>
+    `).join('')}
+  </div>`;
+  
+  document.getElementById('informeContent').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════
+// EXPORT EXCEL — replica estructura original
+// ══════════════════════════════════════════════
+function exportExcel() {
+  const btn = event.currentTarget;
+  const origText = btn.innerHTML;
+  btn.innerHTML = '<span style="font-size:20px">⏳</span> Generando Excel…';
+  btn.disabled = true;
+
+  // Small timeout so UI updates before heavy computation
+  setTimeout(() => {
+    try {
+      _doExportExcel();
+      btn.innerHTML = '<span style="font-size:20px">✅</span> Excel descargado';
+      setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
+    } catch(e) {
+      btn.innerHTML = origText; btn.disabled = false;
+      alert('Error al generar Excel: ' + e.message);
+    }
+  }, 50);
+}
+
+function _doExportExcel() {
+  const wb = XLSX.utils.book_new();
+  const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio',
+                    'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+  // ── helpers ──────────────────────────────────────
+  const parseDate = s => {
+    if (!s || s === '1970-01-01') return null;
+    const [y,m,d] = s.substring(0,10).split('-').map(Number);
+    return new Date(y, m-1, d);
+  };
+  const getMesES = fecha => fecha ? MESES_ES[parseInt(fecha.substring(5,7))-1] : 'enero';
+  const getTrimES = fecha => {
+    if (!fecha) return 'T1';
+    const m = parseInt(fecha.substring(5,7));
+    return m<=3?'T1':m<=6?'T2':m<=9?'T3':'T4';
+  };
+  const getAnoES = fecha => fecha ? parseInt(fecha.substring(0,4)) : 2026;
+
+  const years = [...new Set(DB.facturas.map(f => f.Ano || getAnoES(f.Fecha)))].sort((a,b)=>b-a);
+  const facsSorted = [...DB.facturas].sort((a,b) => (b.Fecha||'').localeCompare(a.Fecha||''));
+
+  // ── cell style helpers for sheet_add_aoa won't work with XLSX community
+  // Use write_xlsx with cell objects for full styling
+  // We'll build each sheet as an array of arrays then add styles via cell refs
+
+  const headerStyle = { font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:10},
+                         fill:{fgColor:{rgb:'1E3A5F'}},
+                         alignment:{horizontal:'center',vertical:'center',wrapText:true} };
+  const evenFill    = { fill:{fgColor:{rgb:'EBF2FA'}} };
+  const numFmt2     = '# ##0.00';
+  const dateFmt     = 'DD/MM/YYYY';
+  const pctFmt      = '0%';
+
+  // Build cell object helper
+  const C = (v, s, z) => {
+    const o = { v };
+    if (s) o.s = s;
+    if (z) o.z = z;
+    if (v instanceof Date) o.t = 'd';
+    else if (typeof v === 'number') o.t = 'n';
+    else o.t = 's';
+    if (v == null || v === '') { o.v = ''; o.t = 's'; }
+    return o;
+  };
+
+  const blueHdr  = (v) => C(v, { font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:10},
+                                   fill:{fgColor:{rgb:'1E3A5F'}},
+                                   alignment:{horizontal:'center',wrapText:true,vertical:'center'} });
+  const greenHdr = (v) => C(v, { font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:10},
+                                   fill:{fgColor:{rgb:'1FAB57'}},
+                                   alignment:{horizontal:'center',vertical:'center'} });
+  const greyHdr  = (v) => C(v, { font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:10},
+                                   fill:{fgColor:{rgb:'595959'}},
+                                   alignment:{horizontal:'center',vertical:'center'} });
+  const orangeHdr= (v) => C(v, { font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:10},
+                                   fill:{fgColor:{rgb:'E67E22'}},
+                                   alignment:{horizontal:'left',vertical:'center'} });
+  const totalHdr = (v) => C(v, { font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:10},
+                                   fill:{fgColor:{rgb:'1E3A5F'}},
+                                   alignment:{horizontal:'right',vertical:'center'} });
+  const dataCell = (v, even, fmt) => {
+    const s = { font:{name:'Calibri',sz:10},
+                alignment:{horizontal:'left',vertical:'top'},
+                border:{top:{style:'thin',color:{rgb:'CCCCCC'}},
+                        bottom:{style:'thin',color:{rgb:'CCCCCC'}},
+                        left:{style:'thin',color:{rgb:'CCCCCC'}},
+                        right:{style:'thin',color:{rgb:'CCCCCC'}}} };
+    if (even) s.fill = {fgColor:{rgb:'EBF2FA'}};
+    const o = C(v, s, fmt);
+    return o;
+  };
+
+  // ════════════════════════════════════════
+  // SHEET 1: BBDD
+  // ════════════════════════════════════════
+  const bbddHeaders = ['NoFactura','Fecha','Vencimiento','Trimestre','Ano','Mes',
+                        'Cliente','NIF','Concepto','Horas','PrecioHora',
+                        'BaseImponible','IVA','RetencionPct','RetencionEUR','Total','Estado'];
+  const bbddWidths  = [14,12,13,8,8,12,32,13,65,8,10,14,8,12,13,12,10];
+
+  const bbddAoa = [ bbddHeaders.map(h => blueHdr(h)) ];
+  facsSorted.forEach((f, i) => {
+    const even = (i % 2 === 0);
+    const d = dataCell;
+    const row = [
+      d(String(f.NoFactura||''), even),
+      Object.assign(d(parseDate(f.Fecha), even), {z:dateFmt}),
+      Object.assign(d(parseDate(f.Vencimiento), even), {z:dateFmt}),
+      d(f.Trimestre || getTrimES(f.Fecha), even),
+      d(f.Ano || getAnoES(f.Fecha), even),
+      d(f.Mes || getMesES(f.Fecha), even),
+      d(f.Cliente||'', even),
+      d(String(f.NIF||''), even),
+      Object.assign(d(f.Concepto||'', even), {s:{...d('',even).s, alignment:{horizontal:'left',vertical:'top',wrapText:true}, font:{name:'Calibri',sz:10}}}),
+      d(f.Horas ?? '', even),
+      Object.assign(d(f.PrecioHora ?? '', even), {z:'#,##0.00'}),
+      Object.assign(d(f.BaseImponible||0, even), {z:'#,##0.00'}),
+      d(f.IVA||0, even),
+      Object.assign(d(Math.abs(f.RetencionPct||0.15), even), {z:'0%'}),
+      Object.assign(d(f.RetencionEUR||0, even), {z:'#,##0.00'}),
+      Object.assign(d(f.Total||0, even), {z:'#,##0.00'}),
+      d(f.Estado||'Emitida', even),
+    ];
+    bbddAoa.push(row);
+  });
+
+  const wsBBDD = XLSX.utils.aoa_to_sheet(bbddAoa);
+  wsBBDD['!cols'] = bbddWidths.map(w => ({wch:w}));
+  wsBBDD['!freeze'] = {xSplit:0, ySplit:1};
+  wsBBDD['!rows'] = [{hpt:20}];
+  XLSX.utils.book_append_sheet(wb, wsBBDD, 'BBDD');
+
+  // ════════════════════════════════════════
+  // SHEET 2: CLIENTES
+  // ════════════════════════════════════════
+  const cliHeaders = ['Codigo','NombreCliente','NIF','Direccion','CPMunicipio','Provincia','Pais','Telefono','Email','Web'];
+  const cliWidths  = [10,36,14,36,22,14,10,14,30,28];
+  const cliSorted  = [...DB.clientes].sort((a,b) => (a.NombreCliente||'').localeCompare(b.NombreCliente||''));
+
+  const cliAoa = [ cliHeaders.map(h => greyHdr(h)) ];
+  cliSorted.forEach((c,i) => {
+    const even = (i%2===0);
+    const d = dataCell;
+    cliAoa.push([
+      d(c.Codigo||'', even), d(c.NombreCliente||'', even), d(c.NIF||'', even),
+      d(c.Direccion||'', even), d(c.CPMunicipio||'', even), d(c.Provincia||'', even),
+      d(c.Pais||'', even), d(String(c.Telefono||''||''), even),
+      d(c.Email||'', even), d(c.Web||'', even)
+    ]);
+  });
+
+  const wsClientes = XLSX.utils.aoa_to_sheet(cliAoa);
+  wsClientes['!cols'] = cliWidths.map(w => ({wch:w}));
+  wsClientes['!freeze'] = {xSplit:0, ySplit:1};
+  XLSX.utils.book_append_sheet(wb, wsClientes, 'Clientes');
+
+  // ════════════════════════════════════════
+  // SHEET 3: RESUMEN MENSUAL
+  // ════════════════════════════════════════
+  const getMensual = (year) => {
+    const r = {};
+    MESES_ES.forEach(m => r[m] = 0);
+    DB.facturas.filter(f => (f.Ano||getAnoES(f.Fecha)) === year)
+      .forEach(f => { const m=(f.Mes||getMesES(f.Fecha)).toLowerCase(); if(m in r) r[m]+=(f.BaseImponible||0); });
+    return r;
+  };
+
+  const rmAoa = [];
+  // Row 1: title
+  rmAoa.push([ orangeHdr('FACTURACION MENSUAL — Base Imponible EUR (Tabla dinamica: actualiza automaticamente)') ]);
+  rmAoa.push([C('')]); // blank
+  // Row 3: headers
+  rmAoa.push([ blueHdr('Mes'), ...years.map(y => blueHdr(String(y))), blueHdr('TOTAL') ]);
+  // Month rows
+  MESES_ES.forEach((mes, mi) => {
+    const row = [ C(mes.charAt(0).toUpperCase()+mes.slice(1), {font:{bold:true,name:'Calibri',sz:10}}) ];
+    let rowTotal = 0;
+    years.forEach(y => { const v = getMensual(y)[mes]||0; row.push(Object.assign(C(v,null,'#,##0.00'),{t:'n'})); rowTotal+=v; });
+    row.push(Object.assign(C(rowTotal, {font:{bold:true,name:'Calibri',sz:10}}, '#,##0.00'),{t:'n'}));
+    rmAoa.push(row);
+  });
+  // Total anual row
+  const totRow = [ C('TOTAL ANUAL', {font:{bold:true,name:'Calibri',sz:10}}) ];
+  let grandTot = 0;
+  years.forEach(y => {
+    const s = Object.values(getMensual(y)).reduce((a,b)=>a+b,0);
+    totRow.push(totalHdr(s));
+    totRow[totRow.length-1].z = '#,##0.00'; totRow[totRow.length-1].t = 'n';
+    grandTot += s;
+  });
+  totRow.push(totalHdr(grandTot));
+  totRow[totRow.length-1].z = '#,##0.00'; totRow[totRow.length-1].t = 'n';
+  rmAoa.push(totRow);
+
+  const wsRM = XLSX.utils.aoa_to_sheet(rmAoa);
+  const rmCols = [{wch:1.5},{wch:14},...years.map(()=>({wch:13})),{wch:13}];
+  wsRM['!cols'] = rmCols;
+  wsRM['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:years.length+1}}];
+  XLSX.utils.book_append_sheet(wb, wsRM, 'Resumen Mensual');
+
+  // ════════════════════════════════════════
+  // SHEET 4: RESUMEN TRIMESTRAL
+  // ════════════════════════════════════════
+  const getTrimData = (year) => {
+    const r = {T1:{base:0,neto:0},T2:{base:0,neto:0},T3:{base:0,neto:0},T4:{base:0,neto:0}};
+    DB.facturas.filter(f => (f.Ano||getAnoES(f.Fecha))===year)
+      .forEach(f => { const t=f.Trimestre||getTrimES(f.Fecha); if(t in r){r[t].base+=(f.BaseImponible||0);r[t].neto+=(f.Total||0);} });
+    return r;
+  };
+
+  const rtAoa = [];
+  rtAoa.push([ C('FACTURACION TRIMESTRAL — Base Imponible EUR (Tabla dinamica)',
+                  {font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:11},fill:{fgColor:{rgb:'1E3A5F'}},alignment:{horizontal:'left'}}) ]);
+  rtAoa.push([C('')]);
+  rtAoa.push([ blueHdr('Trim.'), ...years.map(y=>blueHdr(String(y))), blueHdr('TOTAL') ]);
+
+  const trims4 = ['T1','T2','T3','T4'];
+  trims4.forEach((t,ti) => {
+    const row = [C(t,{font:{bold:true,color:{rgb:'E67E22'},name:'Calibri',sz:10}})];
+    let rowTot=0;
+    years.forEach(y=>{ const v=getTrimData(y)[t].base; row.push(Object.assign(C(v,null,'#,##0.00'),{t:'n'})); rowTot+=v; });
+    row.push(Object.assign(C(rowTot,{font:{bold:true,name:'Calibri',sz:10}},'#,##0.00'),{t:'n'}));
+    rtAoa.push(row);
+  });
+  // TOTAL row
+  const totRt = [C('TOTAL',{font:{bold:true,name:'Calibri',sz:10}})];
+  let gtRt=0;
+  years.forEach(y=>{ const s=trims4.reduce((a,t)=>a+getTrimData(y)[t].base,0); totRt.push(totalHdr(s)); totRt[totRt.length-1].z='#,##0.00';totRt[totRt.length-1].t='n'; gtRt+=s; });
+  totRt.push(totalHdr(gtRt)); totRt[totRt.length-1].z='#,##0.00'; totRt[totRt.length-1].t='n';
+  rtAoa.push(totRt);
+
+  rtAoa.push([C('')]); // blank
+  rtAoa.push([ C('NETO COBRADO TRIMESTRAL',{font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:11},fill:{fgColor:{rgb:'1FAB57'}}}) ]);
+  rtAoa.push([ greenHdr('Trim.'), ...years.map(y=>greenHdr(String(y))) ]);
+  trims4.forEach(t => {
+    const row=[C(t,{font:{bold:true,color:{rgb:'E67E22'},name:'Calibri',sz:10}})];
+    years.forEach(y=>{ const v=getTrimData(y)[t].neto; row.push(Object.assign(C(v,null,'#,##0.00'),{t:'n'})); });
+    rtAoa.push(row);
+  });
+
+  const wsRT = XLSX.utils.aoa_to_sheet(rtAoa);
+  wsRT['!cols'] = [{wch:1.5},{wch:14},...years.map(()=>({wch:13})),{wch:13}];
+  wsRT['!merges'] = [{s:{r:0,c:0},e:{r:0,c:years.length+1}}, {s:{r:8,c:0},e:{r:8,c:years.length+1}}];
+  XLSX.utils.book_append_sheet(wb, wsRT, 'Resumen Trimestral');
+
+  // ════════════════════════════════════════
+  // SHEET 5: INFORME DETALLE
+  // ════════════════════════════════════════
+  const infAoa = [];
+  infAoa.push([C('DETALLE COMPLETO POR AÑO Y TRIMESTRE',
+                  {font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:12},fill:{fgColor:{rgb:'1E3A5F'}}})]);
+
+  const infMerges = [{s:{r:0,c:0},e:{r:0,c:7}}];
+  let infRow = 1;
+  infAoa.push([C('')]); infRow++;
+
+  years.forEach(year => {
+    const fy = facsSorted.filter(f=>(f.Ano||getAnoES(f.Fecha))===year);
+    if(!fy.length) return;
+    const baseY=fy.reduce((s,f)=>s+(f.BaseImponible||0),0);
+    const retY=fy.reduce((s,f)=>s+Math.abs(f.RetencionEUR||0),0);
+    const netoY=fy.reduce((s,f)=>s+(f.Total||0),0);
+
+    infAoa.push([C(`AÑO ${year}   |   ${fy.length} facturas   |   Base: ${eur(baseY)}   |   Retención: -${eur(retY)}   |   Neto: ${eur(netoY)}`,
+                    {font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:10},fill:{fgColor:{rgb:'1E3A5F'}}})]);
+    infMerges.push({s:{r:infRow,c:0},e:{r:infRow,c:7}}); infRow++;
+
+    trims4.forEach(t => {
+      const ft=fy.filter(f=>(f.Trimestre||getTrimES(f.Fecha))===t);
+      if(!ft.length) return;
+      const baseT=ft.reduce((s,f)=>s+(f.BaseImponible||0),0);
+      const retT=ft.reduce((s,f)=>s+Math.abs(f.RetencionEUR||0),0);
+      const netoT=ft.reduce((s,f)=>s+(f.Total||0),0);
+
+      infAoa.push([C(`${t}   |   ${ft.length} facturas   |   Base: ${eur(baseT)}   |   Retención: -${eur(retT)}   |   Neto: ${eur(netoT)}`,
+                      {font:{bold:true,color:{rgb:'FFFFFF'},name:'Calibri',sz:10},fill:{fgColor:{rgb:'2E6DA4'}}})]);
+      infMerges.push({s:{r:infRow,c:0},e:{r:infRow,c:7}}); infRow++;
+
+      // Col headers
+      const ch=['Nº Factura','Fecha','Vencimiento','Cliente','Base Imp.','Retención','Total Neto','Estado'];
+      infAoa.push(ch.map(h=>C(h,{font:{bold:true,color:{rgb:'1E3A5F'},name:'Calibri',sz:10},fill:{fgColor:{rgb:'E8F0F8'}},alignment:{horizontal:'center'}})));
+      infRow++;
+
+      ft.sort((a,b)=>(a.Fecha||'').localeCompare(b.Fecha||'')).forEach((f,fi)=>{
+        const even=(fi%2===0);
+        const d=dataCell;
+        infAoa.push([
+          d(String(f.NoFactura||''),even),
+          Object.assign(d(parseDate(f.Fecha),even),{z:dateFmt}),
+          Object.assign(d(parseDate(f.Vencimiento),even),{z:dateFmt}),
+          d(f.Cliente||'',even),
+          Object.assign(d(f.BaseImponible||0,even),{z:'#,##0.00'}),
+          Object.assign(d(-Math.abs(f.RetencionEUR||0),even),{z:'#,##0.00'}),
+          Object.assign(d(f.Total||0,even),{z:'#,##0.00'}),
+          d(f.Estado||'Emitida',even)
+        ]);
+        infRow++;
+      });
+      infAoa.push([C('')]); infRow++;
+    });
+    infAoa.push([C('')]); infRow++;
+  });
+
+  const wsInf = XLSX.utils.aoa_to_sheet(infAoa);
+  wsInf['!cols'] = [{wch:14},{wch:12},{wch:13},{wch:32},{wch:13},{wch:13},{wch:13},{wch:10}];
+  wsInf['!merges'] = infMerges;
+  XLSX.utils.book_append_sheet(wb, wsInf, 'Informe');
+
+  // ── Download ──────────────────────────────────
+  const today = new Date().toISOString().substring(0,10);
+  const filename = `FacturasAutonomo_${today}.xlsx`;
+  XLSX.writeFile(wb, filename, { bookType:'xlsx', type:'binary', cellStyles:true });
+}
+
+// ══════════════════════════════════════════════
+// LOGIN
+// ══════════════════════════════════════════════
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// Pre-computed SHA-256 of "peponas.1975"
+const PWD_HASH = (async () => sha256('peponas.1975'))();
+
+async function doLogin() {
+  const val = document.getElementById('loginPass').value;
+  const entered = await sha256(val);
+  const correct = await PWD_HASH;
+  if (entered === correct) {
+    sessionStorage.setItem('fja_auth', '1');
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('loginError').textContent = '';
+  } else {
+    const el = document.getElementById('loginError');
+    el.textContent = 'Contraseña incorrecta';
+    el.style.animation = 'none';
+    requestAnimationFrame(() => { el.style.animation = 'shake .3s ease'; });
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginPass').focus();
+  }
+}
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+if (sessionStorage.getItem('fja_auth') === '1') {
+  document.getElementById('loginScreen').classList.add('hidden');
+  renderDashboard();
+} else {
+  document.getElementById('loginScreen').classList.remove('hidden');
+  setTimeout(() => document.getElementById('loginPass').focus(), 200);
+}
+</script>
+</body>
+</html>
