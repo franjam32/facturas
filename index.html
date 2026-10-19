@@ -2640,7 +2640,7 @@ function renderConceptos() {
     <div class="concepto-row">
       ${nuevaConceptos.length > 1 ? `<button class="concepto-del" onclick="delConcepto(${i})">✕</button>` : ''}
       <div class="form-field"><label class="form-label">Descripción</label>
-        <input class="form-input" value="${c.desc}" oninput="updConcepto(${i},'desc',this.value)" placeholder="Descripción del servicio">
+        <input class="form-input" value="${facturaEscapeAttribute(c.desc)}" oninput="updConcepto(${i},'desc',this.value)" placeholder="Descripción del servicio">
       </div>
       <div class="row-grid">
         <div class="form-field"><label class="form-label">Cantidad</label>
@@ -2745,6 +2745,7 @@ function guardarNueva() {
   };
 
   DB.facturas.unshift(nf);
+  sessionStorage.removeItem('fja_pending_course');
 
   // 1. Guardar local siempre
   try { localStorage.setItem('fja_facturas', JSON.stringify({facturas: DB.facturas, clientes: DB.clientes})); } catch(e) {}
@@ -4084,8 +4085,8 @@ async function sha256(str) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
-// Pre-computed SHA-256 of "peponas.1975"
-const PWD_HASH = (async () => sha256('peponas.1975'))();
+// Password verification digest; never embed the plaintext password in published source.
+const PWD_HASH = Promise.resolve('608c1c2a29ffd964cc7cb7d9024e76272a9250bcf8f9189ef198463f94b38496');
 
 async function doLogin() {
   const val = document.getElementById('loginPass').value;
@@ -4093,6 +4094,8 @@ async function doLogin() {
   const correct = await PWD_HASH;
   if (entered === correct) {
     sessionStorage.setItem('fja_auth', '1');
+    rememberInvoiceSession();
+    openPendingCourseInvoice();
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('loginError').textContent = '';
   } else {
@@ -4127,6 +4130,97 @@ function loadTheme() {
   } catch(e) {}
 }
 
+// Course hand-off contains draft data only, never passwords or URL access tokens.
+function facturaEscapeAttribute(value) {
+  return String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function rememberInvoiceSession() {
+  if(sessionStorage.getItem('fja_auth')!=='1') return;
+  try {localStorage.setItem('fja_invoice_session',JSON.stringify({expires:Date.now()+8*60*60*1000}));}catch(e){}
+}
+function restoreInvoiceSession() {
+  if(sessionStorage.getItem('fja_auth')==='1'){rememberInvoiceSession();return;}
+  try {
+    const saved=JSON.parse(localStorage.getItem('fja_invoice_session')||'null');
+    if(saved?.expires>Date.now() && saved.expires<=Date.now()+8*60*60*1000)sessionStorage.setItem('fja_auth','1');
+  }catch(e){}
+}
+function loadCourseDraft() {
+  try {
+    const key=new URLSearchParams(location.hash.slice(1)).get('curso');
+    if(key && /^[a-f0-9-]{36}$/i.test(key)) {
+      const draft=JSON.parse(localStorage.getItem('fja_course_draft_'+key)||'null');
+      if(draft?.version===1 && typeof draft.empresa==='string' && typeof draft.concepto==='string' && Date.now()-draft.createdAt<86400000 && draft.createdAt<=Date.now()+60000) {
+        sessionStorage.setItem('fja_pending_course',JSON.stringify({key,draft}));
+        localStorage.removeItem('fja_course_draft_'+key);
+        history.replaceState(null,'',location.pathname+location.search);
+      }
+    }
+    const pending=JSON.parse(sessionStorage.getItem('fja_pending_course')||'null');
+    if(pending?.draft && Date.now()-pending.draft.createdAt<86400000)return pending;
+  }catch(e){}
+  return null;
+}
+let pendingCourseDraft = loadCourseDraft();
+let openingCourseDraft = false;
+function requestCourseGoogleSession(key) {
+  if(GS.isAuthed() || !window.opener)return Promise.resolve();
+  return new Promise(resolve=>{
+    let timer;
+    const done=()=>{window.removeEventListener('message',receive);clearTimeout(timer);resolve();};
+    const receive=event=>{
+      const data=event.data;
+      if(event.origin!==location.origin || event.source!==window.opener || data?.type!=='fja:course-session' || data.key!==key)return;
+      if(data.clientId===GS.CLIENT_ID && typeof data.accessToken==='string' && data.expiry>Date.now()+60000 && data.expiry<Date.now()+2*60*60*1000) {
+        GS.token=data.accessToken;GS.tokenExpiry=data.expiry;GS.saveToken();gsUpdateStatus();
+      }
+      done();
+    };
+    window.addEventListener('message',receive);
+    timer=setTimeout(done,1200);
+    window.opener.postMessage({type:'fja:course-session-request',key},location.origin);
+  });
+}
+async function openPendingCourseInvoice() {
+  if(!pendingCourseDraft || openingCourseDraft || sessionStorage.getItem('fja_auth')!=='1')return;
+  openingCourseDraft=true;
+  const {key,draft}=pendingCourseDraft;
+  await requestCourseGoogleSession(key);
+  if(GS.isAuthed() && GS.SHEET_ID) {
+    try {
+      // Read before proposing an invoice number/client; no write on opening.
+      const remote=await GS.readAll();
+      DB.facturas=remote.facturas;DB.clientes=remote.clientes;
+      localStorage.setItem('fja_facturas',JSON.stringify({facturas:DB.facturas,clientes:DB.clientes}));
+    } catch(e) {gsShowMsg('No se pudo actualizar Google. Revisa número y cliente antes de guardar.','warn');}
+  }
+  showScreen('nueva',document.querySelector('.nav-btn[onclick*="nueva"]'));
+  const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const matches=DB.clientes.filter(c=>norm(c.NombreCliente)===norm(draft.empresa));
+  if(matches.length===1) {
+    document.getElementById('nClienteSel').value=matches[0].NombreCliente;
+    onSelectCliente(matches[0].NombreCliente);
+  } else {
+    document.getElementById('nCliente').value=draft.empresa;
+    document.getElementById('nNIF').value='';
+  }
+  if(/^\d{4}-\d{2}-\d{2}$/.test(draft.fecha)) {
+    document.getElementById('nFecha').value=draft.fecha;
+    document.getElementById('nNumFac').value=nextInvoiceNum(Number(draft.fecha.slice(0,4)));
+    const venc=new Date(draft.fecha+'T12:00:00Z');venc.setUTCDate(venc.getUTCDate()+30);
+    document.getElementById('nVenc').value=venc.toISOString().slice(0,10);
+  }
+  nuevaConceptos=[{desc:draft.concepto,qty:Number(draft.horas)>0?String(Number(draft.horas)):'1',precio:'',base:''}];
+  renderConceptos();
+  const note=document.createElement('div');note.id='courseInvoiceContext';note.className='form-section';
+  note.textContent=`Curso: ${draft.curso || '—'} · Fecha: ${draft.fecha || '—'} · Lugar: ${draft.lugar || '—'} · Solicitante: ${draft.solicitante || 'Sin persona indicada'}. Revisa cliente, fecha e importe antes de guardar.`;
+  document.getElementById('nuevaFormWrap').prepend(note);
+  // Retain the source draft across a Google OAuth redirect until explicitly saved.
+  pendingCourseDraft=null;
+  openingCourseDraft=false;
+}
+restoreInvoiceSession();
+
 // 1. Load GS config + token from localStorage
 GS.loadConfig();
 
@@ -4144,7 +4238,9 @@ if (sessionStorage.getItem('fja_auth') === '1') {
   document.getElementById('loginScreen').classList.add('hidden');
   renderDashboard();
   // Auto-sync from Sheets on load if connected
-  if (GS.isAuthed() && GS.SHEET_ID && !_gsCallbackHandled) {
+  if (pendingCourseDraft) {
+    openPendingCourseInvoice();
+  } else if (GS.isAuthed() && GS.SHEET_ID && !_gsCallbackHandled) {
     setTimeout(() => GS.syncFromSheets(), 1500);
   } else if (_gsCallbackHandled && GS.SHEET_ID) {
     setTimeout(() => GS.syncFromSheets(), 1000);
@@ -4156,3 +4252,4 @@ if (sessionStorage.getItem('fja_auth') === '1') {
 </script>
 </body>
 </html>
+
